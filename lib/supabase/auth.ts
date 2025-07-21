@@ -46,14 +46,14 @@ export async function signUp(formData: FormData): Promise<{ error?: string; succ
       return { error: "User already exists with this email" }
     }
 
-    // Create new user
+    // Create new user - auto-enrolled in Creator (Free) tier with 0 credits
     const { data: user, error } = await supabase
       .from("users")
       .insert({
         email,
         name,
-        tier: "free",
-        submission_credits: 2,
+        tier: "free", // Creator (Free) tier - default for all new users
+        submission_credits: 0, // Creator tier gets 0 credits by default
         role: "user",
         is_verified: true,
       })
