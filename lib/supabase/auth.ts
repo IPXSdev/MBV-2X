@@ -23,7 +23,7 @@ const MASTER_DEV_KEYS = {
   "ipxsdev@gmail.com": process.env.MASTER_DEV_KEY_IPXS || "TMBM_MASTER_KEY_IPXS_DEV_2024_SECURE",
 }
 
-export async function signUp(formData: FormData) {
+export async function signUp(formData: FormData): Promise<{ error?: string; success?: boolean; user?: User }> {
   const email = formData.get("email") as string
   const password = formData.get("password") as string
   const name = formData.get("name") as string
@@ -106,7 +106,7 @@ export async function signUp(formData: FormData) {
   }
 }
 
-export async function signIn(formData: FormData) {
+export async function signIn(formData: FormData): Promise<{ error?: string; success?: boolean; user?: User }> {
   const email = formData.get("email") as string
   const password = formData.get("password") as string
 
@@ -176,7 +176,7 @@ export async function signIn(formData: FormData) {
   }
 }
 
-export async function signOut() {
+export async function signOut(): Promise<void> {
   try {
     const cookieStore = await cookies()
     const sessionToken = cookieStore.get("session")?.value
@@ -252,7 +252,7 @@ export async function getCurrentUser(): Promise<User | null> {
   }
 }
 
-export async function requireAuth() {
+export async function requireAuth(): Promise<User> {
   const user = await getCurrentUser()
   if (!user) {
     redirect("/login")
@@ -260,7 +260,7 @@ export async function requireAuth() {
   return user
 }
 
-export async function requireAdmin() {
+export async function requireAdmin(): Promise<User> {
   const user = await getCurrentUser()
   if (!user || (user.role !== "admin" && user.role !== "master_dev")) {
     redirect("/")

@@ -1,5 +1,5 @@
 import { SignInForm } from "@/components/auth/sign-in-form"
-import { getCurrentUser } from "@/lib/auth"
+import { getCurrentUser } from "@/lib/supabase/auth"
 import { redirect } from "next/navigation"
 
 export default async function LoginPage() {

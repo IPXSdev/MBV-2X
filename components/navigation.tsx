@@ -11,6 +11,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+// Ensure we're importing from the correct location
+// The import should be:
 import { useAuth } from "./auth/auth-provider"
 
 export function Navigation() {
