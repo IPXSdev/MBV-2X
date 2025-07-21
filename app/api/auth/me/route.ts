@@ -1,23 +1,20 @@
-import { getCurrentUser } from "@/lib/supabase/auth"
 import { NextResponse } from "next/server"
+import { getCurrentUser } from "@/lib/supabase/auth"
 
 export async function GET() {
   try {
+    console.log("🔍 API /auth/me: Starting user lookup...")
     const user = await getCurrentUser()
 
     if (!user) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
+      console.log("❌ API /auth/me: No user found")
+      return NextResponse.json({ user: null }, { status: 200 })
     }
 
-    return NextResponse.json(user, {
-      headers: {
-        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-        Pragma: "no-cache",
-        Expires: "0",
-      },
-    })
+    console.log("✅ API /auth/me: User found:", user.email, "Role:", user.role)
+    return NextResponse.json({ user }, { status: 200 })
   } catch (error) {
-    console.error("Auth API error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    console.error("❌ API /auth/me: Error:", error)
+    return NextResponse.json({ error: "Internal server error", user: null }, { status: 500 })
   }
 }

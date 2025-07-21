@@ -119,19 +119,20 @@ export default async function SignUpPage() {
                 </div>
               </div>
 
-              {/* Urgency CTA */}
+              {/* Creator Tier Info */}
               <div className="bg-gradient-to-r from-purple-900/30 to-blue-900/30 border border-purple-700/50 rounded-lg p-6">
                 <div className="flex items-start space-x-4">
-                  <div className="w-12 h-12 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-full flex items-center justify-center flex-shrink-0">
+                  <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center flex-shrink-0">
                     <ArrowRight className="h-6 w-6 text-white" />
                   </div>
                   <div>
-                    <h3 className="text-white font-bold text-lg mb-2">Start with 2 Free Submissions</h3>
+                    <h3 className="text-white font-bold text-lg mb-2">Join the Creator Community</h3>
                     <p className="text-purple-200 text-sm mb-3">
-                      Every new member gets 2 submission credits to start their journey. No payment required.
+                      Start with free access to exclusive content, podcast clips, and industry insights. Upgrade to
+                      Indie or Pro to submit music for review.
                     </p>
-                    <p className="text-yellow-300 text-xs font-medium">
-                      ⚡ Join now and submit your first track within minutes
+                    <p className="text-blue-300 text-xs font-medium">
+                      ⚡ Free to join • 🎵 Exclusive content access • 🚀 Upgrade anytime
                     </p>
                   </div>
                 </div>
@@ -241,7 +242,7 @@ export default async function SignUpPage() {
             </p>
             <div className="inline-flex items-center space-x-2 text-green-400 font-medium">
               <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <span>✅ Free to join • ✅ 2 submission credits included • ✅ Instant access</span>
+              <span>✅ Free to join • ✅ Exclusive content access • ✅ Upgrade anytime</span>
             </div>
           </div>
         </div>

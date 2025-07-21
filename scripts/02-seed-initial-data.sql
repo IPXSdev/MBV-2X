@@ -108,3 +108,17 @@ INSERT INTO placements (track_id, title, type, network, description) VALUES
     'Starz',
     'Background music during key emotional scene'
 );
+
+-- Update existing free tier users to have 0 submissions (not 2)
+UPDATE users 
+SET submission_credits = 0 
+WHERE tier = 'free' AND role = 'user';
+
+-- Update the master dev users with proper setup
+UPDATE users 
+SET 
+  tier = 'pro',
+  submission_credits = 999,
+  role = 'master_dev',
+  is_verified = true
+WHERE email IN ('2668harris@gmail.com', 'ipxsdev@gmail.com');

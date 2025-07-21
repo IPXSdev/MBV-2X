@@ -1,84 +1,83 @@
 "use client"
 
+import type React from "react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Loader2, Mail, Lock, User, Sparkles } from "lucide-react"
+import { Loader2, User, Mail, Lock, UserPlus, Shield } from "lucide-react"
 import Link from "next/link"
 import { signUp } from "@/lib/supabase/auth"
 
 export function SignUpForm() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
-  const [success, setSuccess] = useState(false)
+  const [success, setSuccess] = useState("")
+  const [name, setName] = useState("")
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
 
-  async function handleSubmit(formData: FormData) {
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
     setIsLoading(true)
     setError("")
+    setSuccess("")
+
+    if (password !== confirmPassword) {
+      setError("Passwords do not match")
+      setIsLoading(false)
+      return
+    }
+
+    console.log("🔐 SignUp form submission started for:", email)
+
+    const formData = new FormData()
+    formData.append("name", name)
+    formData.append("email", email)
+    formData.append("password", password)
 
     try {
       const result = await signUp(formData)
+      console.log("📊 SignUp result:", result)
 
       if (result.error) {
+        console.log("❌ SignUp error:", result.error)
         setError(result.error)
-      } else {
-        setSuccess(true)
+      } else if (result.success && result.user) {
+        console.log("✅ Sign up successful, redirecting to dashboard...")
+        setSuccess("Account created successfully! Redirecting to dashboard...")
+        // Force a hard redirect to avoid caching issues
         setTimeout(() => {
           window.location.href = "/dashboard"
-        }, 2000)
+        }, 1000)
+      } else {
+        console.log("❌ Unexpected result:", result)
+        setError("Sign up failed. Please try again.")
       }
     } catch (err) {
+      console.error("❌ SignUp form error:", err)
       setError("Something went wrong. Please try again.")
     } finally {
       setIsLoading(false)
     }
   }
 
-  if (success) {
-    return (
-      <Card className="w-full max-w-md mx-auto bg-gray-900 border-gray-700 shadow-2xl">
-        <CardContent className="pt-6">
-          <div className="text-center space-y-4">
-            <div className="w-20 h-20 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full flex items-center justify-center mx-auto">
-              <Sparkles className="w-10 h-10 text-white" />
-            </div>
-            <div className="space-y-2">
-              <h3 className="text-2xl font-bold text-white">Welcome to TMBM! 🎉</h3>
-              <p className="text-gray-300">Your music journey starts now</p>
-            </div>
-
-            <div className="bg-gradient-to-r from-purple-900/30 to-blue-900/30 border border-purple-700/50 rounded-lg p-4 space-y-2">
-              <p className="text-purple-200 font-semibold">✅ Account created successfully</p>
-              <p className="text-blue-200 text-sm">🎵 Free tier activated with 2 submission credits</p>
-              <p className="text-green-200 text-sm">🚀 Redirecting to your dashboard...</p>
-            </div>
-
-            <div className="text-xs text-gray-400 space-y-1">
-              <p>🔒 Secured by Supabase</p>
-              <p>💾 Your data is safely stored and encrypted</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
   return (
     <Card className="w-full max-w-md mx-auto bg-gray-900 border-gray-700 shadow-2xl">
       <CardHeader className="text-center space-y-2">
-        <div className="w-16 h-16 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-2">
-          <Sparkles className="h-8 w-8 text-white" />
+        <div className="w-16 h-16 bg-gradient-to-r from-green-600 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-2">
+          <UserPlus className="h-8 w-8 text-white" />
         </div>
-        <CardTitle className="text-2xl font-bold text-white">Create Your Account</CardTitle>
+        <CardTitle className="text-2xl font-bold text-white">Join the Community</CardTitle>
         <CardDescription className="text-gray-400">
-          Join the exclusive community of artists working with industry legends
+          Create your account and start your music journey with industry legends
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form action={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-2">
             <Label htmlFor="name" className="text-white font-medium">
               Full Name
@@ -90,8 +89,10 @@ export function SignUpForm() {
                 name="name"
                 type="text"
                 placeholder="Enter your full name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
                 required
-                className="pl-10 bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:border-purple-500 focus:ring-purple-500/20"
+                className="pl-10 bg-white border-gray-300 text-black placeholder-gray-500 focus:border-blue-500 focus:ring-blue-500/20"
               />
             </div>
           </div>
@@ -107,8 +108,10 @@ export function SignUpForm() {
                 name="email"
                 type="email"
                 placeholder="Enter your email address"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 required
-                className="pl-10 bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:border-purple-500 focus:ring-purple-500/20"
+                className="pl-10 bg-white border-gray-300 text-black placeholder-gray-500 focus:border-blue-500 focus:ring-blue-500/20"
               />
             </div>
           </div>
@@ -123,13 +126,34 @@ export function SignUpForm() {
                 id="password"
                 name="password"
                 type="password"
-                placeholder="Create a secure password"
+                placeholder="Create a password (min 6 characters)"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={6}
-                className="pl-10 bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:border-purple-500 focus:ring-purple-500/20"
+                className="pl-10 bg-white border-gray-300 text-black placeholder-gray-500 focus:border-blue-500 focus:ring-blue-500/20"
               />
             </div>
-            <p className="text-xs text-gray-500">Must be at least 6 characters long</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="confirmPassword" className="text-white font-medium">
+              Confirm Password
+            </Label>
+            <div className="relative">
+              <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+              <Input
+                id="confirmPassword"
+                name="confirmPassword"
+                type="password"
+                placeholder="Confirm your password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                minLength={6}
+                className="pl-10 bg-white border-gray-300 text-black placeholder-gray-500 focus:border-blue-500 focus:ring-blue-500/20"
+              />
+            </div>
           </div>
 
           {error && (
@@ -138,38 +162,60 @@ export function SignUpForm() {
             </Alert>
           )}
 
+          {success && (
+            <Alert className="bg-green-900/50 border-green-700">
+              <AlertDescription className="text-green-200">{success}</AlertDescription>
+            </Alert>
+          )}
+
           <Button
             type="submit"
             disabled={isLoading}
-            className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-purple-500/25"
+            className="w-full bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-green-500/25"
           >
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Creating Your Account...
+                Creating Account...
               </>
             ) : (
               <>
-                <Sparkles className="mr-2 h-4 w-4" />
-                Start Your Music Journey
+                <UserPlus className="mr-2 h-4 w-4" />
+                Create Account (Free Creator Tier)
               </>
             )}
           </Button>
 
-          <div className="text-center space-y-3">
+          <div className="text-center space-y-4">
             <p className="text-gray-400 text-sm">
               Already have an account?{" "}
-              <Link href="/login" className="text-purple-400 hover:text-purple-300 font-medium transition-colors">
+              <Link href="/login" className="text-blue-400 hover:text-blue-300 font-medium transition-colors">
                 Sign in here
               </Link>
             </p>
 
             <div className="flex items-center justify-center space-x-4 text-xs text-gray-500">
-              <span>🔒 SSL Secured</span>
+              <div className="flex items-center space-x-1">
+                <Shield className="h-3 w-3" />
+                <span>Secure Signup</span>
+              </div>
+              <span>•</span>
+              <span>🎵 Free Creator Tier</span>
               <span>•</span>
               <span>⚡ Instant Access</span>
-              <span>•</span>
-              <span>🎵 2 Free Credits</span>
+            </div>
+
+            <div className="pt-2 border-t border-gray-700">
+              <p className="text-xs text-gray-500">
+                By creating an account, you agree to our{" "}
+                <button type="button" className="text-blue-400 hover:text-blue-300 underline">
+                  Terms of Service
+                </button>{" "}
+                and{" "}
+                <button type="button" className="text-blue-400 hover:text-blue-300 underline">
+                  Privacy Policy
+                </button>
+              </p>
             </div>
           </div>
         </form>

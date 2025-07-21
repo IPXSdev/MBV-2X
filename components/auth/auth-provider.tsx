@@ -1,13 +1,12 @@
 "use client"
 
 import type React from "react"
-
 import { createContext, useContext, useEffect, useState } from "react"
 import type { User } from "@/lib/supabase/auth"
 
 interface AuthContextType {
   user: User | null
-  isLoading: boolean
+  loading: boolean
   refreshUser: () => Promise<void>
 }
 
@@ -15,30 +14,44 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [loading, setLoading] = useState(true)
 
   const refreshUser = async () => {
     try {
+      setLoading(true)
+      console.log("🔄 AuthProvider: Refreshing user...")
+
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+
       const response = await fetch("/api/auth/me", {
+        method: "GET",
         credentials: "include",
-        cache: "no-store",
+        signal: controller.signal,
+        headers: {
+          "Cache-Control": "no-cache",
+        },
       })
+
+      clearTimeout(timeoutId)
 
       if (response.ok) {
         const userData = await response.json()
-        if (userData && typeof userData === "object" && userData.id) {
-          setUser(userData)
-        } else {
-          setUser(null)
-        }
+        console.log("📊 AuthProvider: Response data:", userData)
+        setUser(userData.user || null)
       } else {
+        console.log("❌ AuthProvider: Response not ok:", response.status)
         setUser(null)
       }
     } catch (error) {
-      console.error("Auth refresh error:", error)
+      if (error instanceof Error && error.name === "AbortError") {
+        console.error("⏰ AuthProvider: Request timeout")
+      } else {
+        console.error("❌ AuthProvider: Failed to refresh user:", error)
+      }
       setUser(null)
     } finally {
-      setIsLoading(false)
+      setLoading(false)
     }
   }
 
@@ -46,7 +59,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refreshUser()
   }, [])
 
-  return <AuthContext.Provider value={{ user, isLoading, refreshUser }}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={{ user, loading, refreshUser }}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {

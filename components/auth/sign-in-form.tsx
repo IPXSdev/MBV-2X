@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -23,20 +22,29 @@ export function SignInForm() {
     setIsLoading(true)
     setError("")
 
+    console.log("🔐 Form submission started for:", email)
+
     const formData = new FormData()
     formData.append("email", email)
     formData.append("password", password)
 
     try {
       const result = await signIn(formData)
+      console.log("📊 SignIn result:", result)
 
       if (result.error) {
+        console.log("❌ SignIn error:", result.error)
         setError(result.error)
-      } else {
+      } else if (result.success && result.user) {
+        console.log("✅ Sign in successful, redirecting to dashboard...")
+        // Force a hard redirect to avoid caching issues
         window.location.href = "/dashboard"
+      } else {
+        console.log("❌ Unexpected result:", result)
+        setError("Sign in failed. Please try again.")
       }
     } catch (err) {
-      console.error("SignIn error:", err)
+      console.error("❌ SignIn form error:", err)
       setError("Something went wrong. Please try again.")
     } finally {
       setIsLoading(false)
@@ -70,7 +78,7 @@ export function SignInForm() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="pl-10 bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:border-blue-500 focus:ring-blue-500/20"
+                className="pl-10 bg-white border-gray-300 text-black placeholder-gray-500 focus:border-blue-500 focus:ring-blue-500/20"
               />
             </div>
           </div>
@@ -89,7 +97,7 @@ export function SignInForm() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="pl-10 bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:border-blue-500 focus:ring-blue-500/20"
+                className="pl-10 bg-white border-gray-300 text-black placeholder-gray-500 focus:border-blue-500 focus:ring-blue-500/20"
               />
             </div>
           </div>
@@ -137,11 +145,12 @@ export function SignInForm() {
               <span>🎵 Your Dashboard</span>
             </div>
 
-            {/* Forgot Password Link */}
             <div className="pt-2 border-t border-gray-700">
               <p className="text-xs text-gray-500">
                 Forgot your password?{" "}
-                <button className="text-blue-400 hover:text-blue-300 underline">Reset here</button>
+                <button type="button" className="text-blue-400 hover:text-blue-300 underline">
+                  Reset here
+                </button>
               </p>
             </div>
           </div>

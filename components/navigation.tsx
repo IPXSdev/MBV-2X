@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Menu, X, ChevronDown, User, LogOut, Settings } from "lucide-react"
+import { Menu, X, ChevronDown, User, LogOut, Settings, AlertCircle } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,13 +11,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-// Ensure we're importing from the correct location
-// The import should be:
 import { useAuth } from "./auth/auth-provider"
 
 export function Navigation() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
-  const { user, isLoading } = useAuth()
+  const { user, isLoading, error } = useAuth()
 
   const navLinks = [
     { href: "/", label: "Home" },
@@ -71,6 +69,11 @@ export function Navigation() {
             {/* Auth Section */}
             {isLoading ? (
               <div className="w-20 h-8 bg-gray-800 animate-pulse rounded" />
+            ) : error ? (
+              <div className="flex items-center space-x-2 text-red-400">
+                <AlertCircle className="h-4 w-4" />
+                <span className="text-xs">Connection Error</span>
+              </div>
             ) : user ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -166,6 +169,13 @@ export function Navigation() {
                   {link.label}
                 </Link>
               ))}
+
+              {error && (
+                <div className="flex items-center space-x-2 text-red-400 px-2 py-1">
+                  <AlertCircle className="h-4 w-4" />
+                  <span className="text-sm">Connection Error</span>
+                </div>
+              )}
 
               {user ? (
                 <div className="flex flex-col space-y-2 pt-4 border-t border-gray-800">

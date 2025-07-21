@@ -1,129 +1,100 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Play, Pause, Volume2, SkipBack, SkipForward } from "lucide-react"
+import { useState, useRef, useEffect } from "react"
+import { Button } from "@/components/ui/button"
+import { Slider } from "@/components/ui/slider"
+import { Play, Pause, Volume2 } from "lucide-react"
 
 interface WaveformPlayerProps {
-  trackTitle?: string
-  artist?: string
-  duration?: number
+  trackTitle: string
+  artist: string
+  duration: number
 }
 
-export function WaveformPlayer({
-  trackTitle = "Your Next Hit",
-  artist = "Submitted Artist",
-  duration = 180,
-}: WaveformPlayerProps) {
-  const [isPlaying, setIsPlaying] = useState(true)
+export function WaveformPlayer({ trackTitle, artist, duration }: WaveformPlayerProps) {
+  const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
-  const [waveformData, setWaveformData] = useState<number[]>([])
+  const [volume, setVolume] = useState(75)
+  const intervalRef = useRef<NodeJS.Timeout | null>(null)
 
-  // Generate random waveform data
-  useEffect(() => {
-    const generateWaveform = () => {
-      const data = Array.from({ length: 100 }, () => Math.random() * 100 + 10)
-      setWaveformData(data)
-    }
-    generateWaveform()
-  }, [])
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = Math.floor(seconds % 60)
+    return `${mins}:${secs.toString().padStart(2, "0")}`
+  }
 
-  // Simulate playback progress
-  useEffect(() => {
-    let interval: NodeJS.Timeout
+  const togglePlayPause = () => {
     if (isPlaying) {
-      interval = setInterval(() => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+      }
+      setIsPlaying(false)
+    } else {
+      setIsPlaying(true)
+      intervalRef.current = setInterval(() => {
         setCurrentTime((prev) => {
           if (prev >= duration) {
             setIsPlaying(false)
+            if (intervalRef.current) {
+              clearInterval(intervalRef.current)
+            }
             return 0
           }
           return prev + 1
         })
       }, 1000)
     }
-    return () => clearInterval(interval)
-  }, [isPlaying, duration])
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins}:${secs.toString().padStart(2, "0")}`
   }
 
-  const progress = (currentTime / duration) * 100
+  const handleSeek = (value: number[]) => {
+    setCurrentTime(value[0])
+  }
+
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+      }
+    }
+  }, [])
 
   return (
-    <div className="bg-gray-900/80 backdrop-blur-sm border border-gray-700 rounded-xl p-6 space-y-4">
-      {/* Track Info */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-white font-semibold text-lg">{trackTitle}</h3>
-          <p className="text-gray-400 text-sm">{artist}</p>
-        </div>
-        <div className="text-gray-400 text-sm">
-          {formatTime(currentTime)} / {formatTime(duration)}
-        </div>
-      </div>
+    <div className="bg-gray-900/50 border border-gray-700 rounded-lg p-4">
+      <div className="flex items-center space-x-4">
+        <Button
+          onClick={togglePlayPause}
+          size="sm"
+          className="w-10 h-10 rounded-full bg-blue-600 hover:bg-blue-700 flex items-center justify-center"
+        >
+          {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
+        </Button>
 
-      {/* Waveform Visualization */}
-      <div className="relative h-20 bg-gray-800 rounded-lg overflow-hidden">
-        <div className="flex items-end justify-center h-full px-2 space-x-1">
-          {waveformData.map((height, index) => {
-            const isActive = (index / waveformData.length) * 100 <= progress
-            return (
-              <div
-                key={index}
-                className={`w-1 transition-all duration-300 ${
-                  isActive ? "bg-gradient-to-t from-purple-500 to-blue-400" : "bg-gray-600"
-                }`}
-                style={{ height: `${height}%` }}
+        <div className="flex-1">
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <p className="text-white font-medium text-sm">{trackTitle}</p>
+              <p className="text-gray-400 text-xs">{artist}</p>
+            </div>
+            <div className="text-gray-400 text-xs">
+              {formatTime(currentTime)} / {formatTime(duration)}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Slider value={[currentTime]} max={duration} step={1} onValueChange={handleSeek} className="w-full" />
+
+            <div className="flex items-center space-x-2">
+              <Volume2 className="h-4 w-4 text-gray-400" />
+              <Slider
+                value={[volume]}
+                max={100}
+                step={1}
+                onValueChange={(value) => setVolume(value[0])}
+                className="w-20"
               />
-            )
-          })}
-        </div>
-
-        {/* Progress overlay */}
-        <div
-          className="absolute top-0 left-0 h-full bg-gradient-to-r from-purple-500/20 to-blue-500/20 transition-all duration-1000"
-          style={{ width: `${progress}%` }}
-        />
-      </div>
-
-      {/* Controls */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
-          <button className="text-gray-400 hover:text-white transition-colors">
-            <SkipBack className="h-5 w-5" />
-          </button>
-
-          <button
-            onClick={() => setIsPlaying(!isPlaying)}
-            className="w-12 h-12 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 rounded-full flex items-center justify-center text-white transition-all duration-300 transform hover:scale-105 shadow-lg"
-          >
-            {isPlaying ? (
-              <Pause className="h-5 w-5" fill="currentColor" />
-            ) : (
-              <Play className="h-5 w-5 ml-0.5" fill="currentColor" />
-            )}
-          </button>
-
-          <button className="text-gray-400 hover:text-white transition-colors">
-            <SkipForward className="h-5 w-5" />
-          </button>
-        </div>
-
-        <div className="flex items-center space-x-2">
-          <Volume2 className="h-4 w-4 text-gray-400" />
-          <div className="w-20 h-1 bg-gray-700 rounded-full overflow-hidden">
-            <div className="w-3/4 h-full bg-gradient-to-r from-purple-500 to-blue-500 rounded-full" />
+            </div>
           </div>
         </div>
-      </div>
-
-      {/* Submission CTA */}
-      <div className="bg-gradient-to-r from-purple-900/30 to-blue-900/30 border border-purple-700/50 rounded-lg p-4 text-center">
-        <p className="text-purple-200 text-sm font-medium">🎵 This could be your track playing for industry legends</p>
-        <p className="text-gray-400 text-xs mt-1">Join now and submit your music to Grammy-winning producers</p>
       </div>
     </div>
   )

@@ -5,24 +5,22 @@ import { Music, Award, Users, ArrowRight, Star, Play } from "lucide-react"
 import { WaveformPlayer } from "@/components/ui/waveform-player"
 
 export default async function LoginPage() {
+  // Check if user is already logged in
   const user = await getCurrentUser()
-
-  // Redirect if already logged in
   if (user) {
+    console.log("User already logged in, redirecting to dashboard")
     redirect("/dashboard")
   }
 
   return (
     <div className="min-h-screen bg-black text-white">
-      {/* Hero Section - Different Layout: Form First */}
       <div className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-bl from-blue-900/20 via-black to-purple-900/20" />
 
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
-            {/* Left Side - Sign In Form First */}
+            {/* Left Side - Sign In Form */}
             <div className="space-y-8 order-2 lg:order-1">
-              {/* Header */}
               <div className="text-center lg:text-left space-y-4">
                 <div className="flex items-center justify-center lg:justify-start space-x-3 mb-6">
                   <div className="relative w-12 h-12 rounded-full overflow-hidden shadow-lg">
@@ -51,10 +49,8 @@ export default async function LoginPage() {
                 </p>
               </div>
 
-              {/* Sign In Form */}
               <SignInForm />
 
-              {/* Quick Access Info */}
               <div className="bg-gradient-to-r from-blue-900/30 to-purple-900/30 border border-blue-700/50 rounded-lg p-6">
                 <div className="flex items-start space-x-4">
                   <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full flex items-center justify-center flex-shrink-0">
@@ -70,7 +66,6 @@ export default async function LoginPage() {
                 </div>
               </div>
 
-              {/* Additional Encouragement */}
               <div className="text-center space-y-3">
                 <p className="text-gray-400 text-sm">🔒 Secure login with industry-grade encryption</p>
                 <p className="text-blue-400 text-sm font-medium">
@@ -84,7 +79,6 @@ export default async function LoginPage() {
 
             {/* Right Side - Content & Media */}
             <div className="space-y-8 order-1 lg:order-2">
-              {/* Media Player Visual */}
               <div className="relative group">
                 <div className="absolute inset-0 bg-gradient-to-t from-blue-600/20 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                 <video
@@ -111,10 +105,8 @@ export default async function LoginPage() {
                 </div>
               </div>
 
-              {/* Interactive Waveform Player */}
               <WaveformPlayer trackTitle="Last Submission" artist="Your Track" duration={195} />
 
-              {/* Dashboard Preview Stats */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex items-start space-x-3 p-4 bg-gray-900/50 rounded-lg border border-gray-800">
                   <div className="w-8 h-8 bg-gradient-to-r from-green-600 to-emerald-600 rounded-full flex items-center justify-center flex-shrink-0">
@@ -157,7 +149,6 @@ export default async function LoginPage() {
                 </div>
               </div>
 
-              {/* Recent Activity */}
               <div className="space-y-4">
                 <h3 className="text-white font-semibold text-lg">Platform Activity</h3>
                 <div className="space-y-3">
@@ -180,7 +171,6 @@ export default async function LoginPage() {
         </div>
       </div>
 
-      {/* Bottom Section - Success Stories */}
       <div className="border-t border-gray-800 bg-gray-900/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
           <div className="text-center mb-8">
