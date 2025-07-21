@@ -4,19 +4,6 @@
   "installCommand": "npm install",
   "framework": "nextjs",
   "regions": ["iad1"],
-  "env": {
-    "NEXT_PUBLIC_SUPABASE_URL": "@supabase-url",
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "@supabase-anon-key",
-    "SUPABASE_SERVICE_ROLE_KEY": "@supabase-service-role-key",
-    "MASTER_DEV_KEY_HARRIS": "@master-dev-key-harris",
-    "MASTER_DEV_KEY_IPXS": "@master-dev-key-ipxs"
-  },
-  "build": {
-    "env": {
-      "NEXT_PUBLIC_SUPABASE_URL": "@supabase-url",
-      "NEXT_PUBLIC_SUPABASE_ANON_KEY": "@supabase-anon-key"
-    }
-  },
   "functions": {
     "app/api/**": {
       "maxDuration": 30

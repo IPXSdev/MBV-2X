@@ -38,71 +38,76 @@ export async function signUp(formData: FormData): Promise<{ error?: string; succ
 
   const supabase = await createClient()
 
-  // Check if user already exists
-  const { data: existingUser } = await supabase.from("users").select("id").eq("email", email).single()
+  try {
+    // Check if user already exists using service role client
+    const { data: existingUser } = await supabase.from("users").select("id").eq("email", email).single()
 
-  if (existingUser) {
-    return { error: "User already exists with this email" }
-  }
+    if (existingUser) {
+      return { error: "User already exists with this email" }
+    }
 
-  // Create new user
-  const { data: user, error } = await supabase
-    .from("users")
-    .insert({
-      email,
-      name,
-      tier: "free",
-      submission_credits: 2,
-      role: "user",
-      is_verified: true,
+    // Create new user
+    const { data: user, error } = await supabase
+      .from("users")
+      .insert({
+        email,
+        name,
+        tier: "free",
+        submission_credits: 2,
+        role: "user",
+        is_verified: true,
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error("Signup error:", error)
+      return { error: "Failed to create account" }
+    }
+
+    // Create session
+    const sessionToken = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
+
+    const { error: sessionError } = await supabase.from("user_sessions").insert({
+      user_id: user.id,
+      session_token: sessionToken,
+      expires_at: expiresAt.toISOString(),
     })
-    .select()
-    .single()
 
-  if (error) {
+    if (sessionError) {
+      console.error("Session creation error:", sessionError)
+      return { error: "Failed to create session" }
+    }
+
+    // Set cookie
+    const cookieStore = await cookies()
+    cookieStore.set("session", sessionToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+      path: "/",
+    })
+
+    return {
+      success: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        tier: user.tier,
+        submissionCredits: user.submission_credits,
+        role: user.role,
+        createdAt: user.created_at,
+        isVerified: user.is_verified,
+        profileImageUrl: user.profile_image_url,
+        bio: user.bio,
+      },
+    }
+  } catch (error) {
     console.error("Signup error:", error)
     return { error: "Failed to create account" }
-  }
-
-  // Create session
-  const sessionToken = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
-
-  const { error: sessionError } = await supabase.from("user_sessions").insert({
-    user_id: user.id,
-    session_token: sessionToken,
-    expires_at: expiresAt.toISOString(),
-  })
-
-  if (sessionError) {
-    console.error("Session creation error:", sessionError)
-    return { error: "Failed to create session" }
-  }
-
-  // Set cookie
-  const cookieStore = await cookies()
-  cookieStore.set("session", sessionToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 60 * 60 * 24 * 7, // 7 days
-    path: "/",
-  })
-
-  return {
-    success: true,
-    user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      tier: user.tier,
-      submissionCredits: user.submission_credits,
-      role: user.role,
-      createdAt: user.created_at,
-      isVerified: user.is_verified,
-      profileImageUrl: user.profile_image_url,
-      bio: user.bio,
-    },
   }
 }
 
@@ -116,73 +121,78 @@ export async function signIn(formData: FormData): Promise<{ error?: string; succ
 
   const supabase = await createClient()
 
-  // Find user with service role to bypass RLS
-  const { data: user, error } = await supabase.from("users").select("*").eq("email", email).single()
+  try {
+    // Find user using service role to bypass RLS
+    const { data: user, error } = await supabase.from("users").select("*").eq("email", email).single()
 
-  if (error || !user) {
-    console.error("User lookup error:", error)
-    return { error: "Invalid email or password" }
-  }
-
-  // For master dev accounts, check credentials
-  if (user.role === "master_dev") {
-    const masterKey = MASTER_DEV_KEYS[email as keyof typeof MASTER_DEV_KEYS]
-    console.log("Master key check for", email, "- Key exists:", !!masterKey)
-
-    if (password !== masterKey) {
-      console.error("Master key mismatch for", email)
-      return { error: "Invalid master dev credentials. Please use your secure master key." }
+    if (error || !user) {
+      console.error("User lookup error:", error)
+      return { error: "Invalid email or password" }
     }
-  } else {
-    // For regular users, you'd typically hash and compare passwords
-    // For now, we'll accept any password for regular users (implement proper password hashing later)
-    if (password.length < 6) {
-      return { error: "Invalid password" }
+
+    // For master dev accounts, check credentials
+    if (user.role === "master_dev") {
+      const masterKey = MASTER_DEV_KEYS[email as keyof typeof MASTER_DEV_KEYS]
+      console.log("Master key check for", email, "- Key exists:", !!masterKey)
+
+      if (password !== masterKey) {
+        console.error("Master key mismatch for", email)
+        return { error: "Invalid master dev credentials. Please use your secure master key." }
+      }
+    } else {
+      // For regular users, you'd typically hash and compare passwords
+      // For now, we'll accept any password for regular users (implement proper password hashing later)
+      if (password.length < 6) {
+        return { error: "Invalid password" }
+      }
     }
-  }
 
-  // Clean up old sessions
-  await supabase.from("user_sessions").delete().eq("user_id", user.id).lt("expires_at", new Date().toISOString())
+    // Clean up old sessions
+    await supabase.from("user_sessions").delete().eq("user_id", user.id).lt("expires_at", new Date().toISOString())
 
-  // Create new session
-  const sessionToken = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
+    // Create new session
+    const sessionToken = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
 
-  const { error: sessionError } = await supabase.from("user_sessions").insert({
-    user_id: user.id,
-    session_token: sessionToken,
-    expires_at: expiresAt.toISOString(),
-  })
+    const { error: sessionError } = await supabase.from("user_sessions").insert({
+      user_id: user.id,
+      session_token: sessionToken,
+      expires_at: expiresAt.toISOString(),
+    })
 
-  if (sessionError) {
-    console.error("Session creation error:", sessionError)
-    return { error: "Failed to create session" }
-  }
+    if (sessionError) {
+      console.error("Session creation error:", sessionError)
+      return { error: "Failed to create session" }
+    }
 
-  // Set cookie
-  const cookieStore = await cookies()
-  cookieStore.set("session", sessionToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 60 * 60 * 24 * 7, // 7 days
-    path: "/",
-  })
+    // Set cookie
+    const cookieStore = await cookies()
+    cookieStore.set("session", sessionToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+      path: "/",
+    })
 
-  return {
-    success: true,
-    user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      tier: user.tier,
-      submissionCredits: user.submission_credits,
-      role: user.role,
-      createdAt: user.created_at,
-      isVerified: user.is_verified,
-      profileImageUrl: user.profile_image_url,
-      bio: user.bio,
-    },
+    return {
+      success: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        tier: user.tier,
+        submissionCredits: user.submission_credits,
+        role: user.role,
+        createdAt: user.created_at,
+        isVerified: user.is_verified,
+        profileImageUrl: user.profile_image_url,
+        bio: user.bio,
+      },
+    }
+  } catch (error) {
+    console.error("SignIn error:", error)
+    return { error: "Authentication failed. Please try again." }
   }
 }
 
@@ -215,35 +225,26 @@ export async function getCurrentUser(): Promise<User | null> {
 
     const supabase = await createClient()
 
-    // Get session and user with service role to bypass RLS
+    // Get session first
     const { data: session, error: sessionError } = await supabase
       .from("user_sessions")
-      .select(`
-        user_id,
-        expires_at,
-        users (
-          id,
-          email,
-          name,
-          tier,
-          submission_credits,
-          role,
-          created_at,
-          is_verified,
-          profile_image_url,
-          bio
-        )
-      `)
+      .select("user_id, expires_at")
       .eq("session_token", sessionToken)
       .gt("expires_at", new Date().toISOString())
       .single()
 
-    if (sessionError || !session || !session.users) {
+    if (sessionError || !session) {
       console.error("Session lookup error:", sessionError)
       return null
     }
 
-    const user = Array.isArray(session.users) ? session.users[0] : session.users
+    // Get user data
+    const { data: user, error: userError } = await supabase.from("users").select("*").eq("id", session.user_id).single()
+
+    if (userError || !user) {
+      console.error("User lookup error:", userError)
+      return null
+    }
 
     return {
       id: user.id,

@@ -159,7 +159,7 @@ export default async function SignUpPage() {
                         <Play className="h-5 w-5 text-white ml-0.5" fill="currentColor" />
                       </div>
                       <div>
-                        <p className="text-white font-semibold text-sm">Industry Insights Podcast</p>
+                        <p className="text-white font-semibold text-sm">The Man Behind the Music</p>
                         <p className="text-gray-300 text-xs">Exclusive conversations with music legends</p>
                       </div>
                     </div>
