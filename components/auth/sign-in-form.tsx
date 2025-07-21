@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Loader2, Mail, Lock } from "lucide-react"
+import { Loader2, Mail, Lock, LogIn, Shield } from "lucide-react"
 import Link from "next/link"
 import { signIn } from "@/lib/supabase/auth"
 
@@ -44,16 +44,21 @@ export function SignInForm() {
   }
 
   return (
-    <Card className="w-full max-w-md mx-auto bg-gray-900 border-gray-700">
-      <CardHeader className="text-center">
+    <Card className="w-full max-w-md mx-auto bg-gray-900 border-gray-700 shadow-2xl">
+      <CardHeader className="text-center space-y-2">
+        <div className="w-16 h-16 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-2">
+          <LogIn className="h-8 w-8 text-white" />
+        </div>
         <CardTitle className="text-2xl font-bold text-white">Welcome Back</CardTitle>
-        <CardDescription className="text-gray-400">Sign in to your TMBM account</CardDescription>
+        <CardDescription className="text-gray-400">
+          Sign in to continue your music journey with industry legends
+        </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-2">
-            <Label htmlFor="email" className="text-white">
-              Email
+            <Label htmlFor="email" className="text-white font-medium">
+              Email Address
             </Label>
             <div className="relative">
               <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
@@ -61,17 +66,17 @@ export function SignInForm() {
                 id="email"
                 name="email"
                 type="email"
-                placeholder="Enter your email"
+                placeholder="Enter your email address"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="pl-10 bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:border-purple-500"
+                className="pl-10 bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:border-blue-500 focus:ring-blue-500/20"
               />
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="password" className="text-white">
+            <Label htmlFor="password" className="text-white font-medium">
               Password / Master Key
             </Label>
             <div className="relative">
@@ -84,7 +89,7 @@ export function SignInForm() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="pl-10 bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:border-purple-500"
+                className="pl-10 bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:border-blue-500 focus:ring-blue-500/20"
               />
             </div>
           </div>
@@ -98,7 +103,7 @@ export function SignInForm() {
           <Button
             type="submit"
             disabled={isLoading}
-            className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-all duration-300"
+            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-3 px-4 rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-blue-500/25"
           >
             {isLoading ? (
               <>
@@ -106,17 +111,39 @@ export function SignInForm() {
                 Signing In...
               </>
             ) : (
-              "Sign In"
+              <>
+                <LogIn className="mr-2 h-4 w-4" />
+                Sign In to Dashboard
+              </>
             )}
           </Button>
 
-          <div className="text-center space-y-2">
+          <div className="text-center space-y-4">
             <p className="text-gray-400 text-sm">
               Don't have an account?{" "}
-              <Link href="/signup" className="text-purple-400 hover:text-purple-300 font-medium">
-                Sign up
+              <Link href="/signup" className="text-blue-400 hover:text-blue-300 font-medium transition-colors">
+                Join the community
               </Link>
             </p>
+
+            <div className="flex items-center justify-center space-x-4 text-xs text-gray-500">
+              <div className="flex items-center space-x-1">
+                <Shield className="h-3 w-3" />
+                <span>Secure Login</span>
+              </div>
+              <span>•</span>
+              <span>⚡ Instant Access</span>
+              <span>•</span>
+              <span>🎵 Your Dashboard</span>
+            </div>
+
+            {/* Forgot Password Link */}
+            <div className="pt-2 border-t border-gray-700">
+              <p className="text-xs text-gray-500">
+                Forgot your password?{" "}
+                <button className="text-blue-400 hover:text-blue-300 underline">Reset here</button>
+              </p>
+            </div>
           </div>
         </form>
       </CardContent>

@@ -2,6 +2,7 @@ import { SignUpForm } from "@/components/auth/sign-up-form"
 import { getCurrentUser } from "@/lib/supabase/auth"
 import { redirect } from "next/navigation"
 import { Play, Star, Music, Award, Users, ArrowRight } from "lucide-react"
+import { WaveformPlayer } from "@/components/ui/waveform-player"
 
 export default async function SignUpPage() {
   const user = await getCurrentUser()
@@ -13,7 +14,7 @@ export default async function SignUpPage() {
 
   return (
     <div className="min-h-screen bg-black text-white">
-      {/* Hero Section with Podcast Image */}
+      {/* Hero Section with Media Player Visual */}
       <div className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-purple-900/20 via-black to-blue-900/20" />
 
@@ -137,16 +138,20 @@ export default async function SignUpPage() {
               </div>
             </div>
 
-            {/* Right Side - Podcast Image & Form */}
+            {/* Right Side - Media Player Visual & Form */}
             <div className="space-y-8">
-              {/* Podcast Studio Image */}
+              {/* Media Player Visual */}
               <div className="relative group">
                 <div className="absolute inset-0 bg-gradient-to-t from-purple-600/20 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                <img
-                  src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/big-tank.jpg-xE31OY2snwDBTIiSTMnhQLuIuJO5um.jpeg"
-                  alt="Industry professionals in podcast studio"
+                <video
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
                   className="w-full h-64 object-cover rounded-2xl shadow-2xl group-hover:shadow-purple-500/30 transition-all duration-500 transform group-hover:scale-105"
-                />
+                >
+                  <source src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/media%20player%20visual-AL4Yf9WIU1HtEWbeiS5rvOTJhhjCvL.mp4" type="video/mp4" />
+                </video>
                 <div className="absolute bottom-4 left-4 right-4">
                   <div className="bg-black/80 backdrop-blur-sm rounded-lg p-4">
                     <div className="flex items-center space-x-3">
@@ -161,6 +166,9 @@ export default async function SignUpPage() {
                   </div>
                 </div>
               </div>
+
+              {/* Interactive Waveform Player */}
+              <WaveformPlayer trackTitle="Your Next Hit" artist="Submitted Artist" duration={180} />
 
               {/* Sign Up Form */}
               <SignUpForm />

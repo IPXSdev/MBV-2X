@@ -1,6 +1,8 @@
 import { SignInForm } from "@/components/auth/sign-in-form"
 import { getCurrentUser } from "@/lib/supabase/auth"
 import { redirect } from "next/navigation"
+import { Music, Award, Users, ArrowRight, Star, Play } from "lucide-react"
+import { WaveformPlayer } from "@/components/ui/waveform-player"
 
 export default async function LoginPage() {
   const user = await getCurrentUser()
@@ -11,21 +13,246 @@ export default async function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center px-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="relative w-16 h-16 rounded-full overflow-hidden shadow-lg mx-auto mb-4">
-            <img
-              src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/holographic%20nav%20logo-qI8h2EHhrvruK8MhJfUE8k87DbX2xv.png"
-              alt="TMBM Logo"
-              className="w-full h-full object-cover scale-110"
-            />
-          </div>
-          <h1 className="text-3xl font-bold text-white mb-2">Welcome Back</h1>
-          <p className="text-gray-400">Sign in to continue your music journey</p>
-        </div>
+    <div className="min-h-screen bg-black text-white">
+      {/* Hero Section with Media Player Visual */}
+      <div className="relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-purple-900/20 via-black to-blue-900/20" />
 
-        <SignInForm />
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          <div className="grid lg:grid-cols-2 gap-12 items-center">
+            {/* Left Side - Welcome Back Message */}
+            <div className="space-y-8">
+              <div className="space-y-6">
+                <div className="flex items-center space-x-3 mb-6">
+                  <div className="relative w-12 h-12 rounded-full overflow-hidden shadow-lg">
+                    <img
+                      src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/holographic%20nav%20logo-qI8h2EHhrvruK8MhJfUE8k87DbX2xv.png"
+                      alt="TMBM Logo"
+                      className="w-full h-full object-cover scale-110"
+                    />
+                  </div>
+                  <span className="text-2xl font-bold bg-gradient-to-r from-white to-purple-200 bg-clip-text text-transparent">
+                    The Man Behind the Music
+                  </span>
+                </div>
+
+                <h1 className="text-4xl md:text-6xl font-bold leading-tight">
+                  <span className="bg-gradient-to-r from-white via-purple-200 to-blue-200 bg-clip-text text-transparent">
+                    Welcome Back
+                  </span>
+                  <br />
+                  <span className="text-white">Music Creator</span>
+                </h1>
+
+                <p className="text-xl text-gray-300 leading-relaxed max-w-2xl">
+                  Continue your journey with{" "}
+                  <span className="text-purple-400 font-semibold">Grammy-winning producers</span> and industry legends.
+                  Your next breakthrough is just a submission away.
+                </p>
+              </div>
+
+              {/* Quick Stats */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="flex items-start space-x-4 p-4 bg-gray-900/50 rounded-lg border border-gray-800">
+                  <div className="w-10 h-10 bg-gradient-to-r from-green-600 to-emerald-600 rounded-full flex items-center justify-center flex-shrink-0">
+                    <Music className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-white font-semibold mb-1">Active Submissions</h3>
+                    <p className="text-gray-400 text-sm">Check your submission status and feedback</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start space-x-4 p-4 bg-gray-900/50 rounded-lg border border-gray-800">
+                  <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-full flex items-center justify-center flex-shrink-0">
+                    <Award className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-white font-semibold mb-1">New Opportunities</h3>
+                    <p className="text-gray-400 text-sm">Fresh placement opportunities waiting</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start space-x-4 p-4 bg-gray-900/50 rounded-lg border border-gray-800">
+                  <div className="w-10 h-10 bg-gradient-to-r from-purple-600 to-pink-600 rounded-full flex items-center justify-center flex-shrink-0">
+                    <Users className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-white font-semibold mb-1">Community Updates</h3>
+                    <p className="text-gray-400 text-sm">See what other artists are achieving</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start space-x-4 p-4 bg-gray-900/50 rounded-lg border border-gray-800">
+                  <div className="w-10 h-10 bg-gradient-to-r from-orange-600 to-red-600 rounded-full flex items-center justify-center flex-shrink-0">
+                    <Play className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-white font-semibold mb-1">Latest Podcast</h3>
+                    <p className="text-gray-400 text-sm">New industry insights and tips</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Recent Activity */}
+              <div className="space-y-4">
+                <h3 className="text-white font-semibold text-lg">Recent Platform Activity</h3>
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-3 p-3 bg-gray-900/30 rounded-lg border border-gray-800">
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                    <span className="text-gray-300 text-sm">New placement in "Power Book III" - 2 hours ago</span>
+                  </div>
+                  <div className="flex items-center space-x-3 p-3 bg-gray-900/30 rounded-lg border border-gray-800">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                    <span className="text-gray-300 text-sm">Big Tank reviewed 15 new submissions - 4 hours ago</span>
+                  </div>
+                  <div className="flex items-center space-x-3 p-3 bg-gray-900/30 rounded-lg border border-gray-800">
+                    <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></div>
+                    <span className="text-gray-300 text-sm">New podcast episode released - 1 day ago</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick Access CTA */}
+              <div className="bg-gradient-to-r from-purple-900/30 to-blue-900/30 border border-purple-700/50 rounded-lg p-6">
+                <div className="flex items-start space-x-4">
+                  <div className="w-12 h-12 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-full flex items-center justify-center flex-shrink-0">
+                    <ArrowRight className="h-6 w-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-white font-bold text-lg mb-2">Ready to Submit Your Next Hit?</h3>
+                    <p className="text-purple-200 text-sm mb-3">
+                      Log in to access your dashboard and continue building your music career with industry legends.
+                    </p>
+                    <p className="text-yellow-300 text-xs font-medium">⚡ Your submission credits are waiting</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Side - Media Player Visual & Form */}
+            <div className="space-y-8">
+              {/* Media Player Visual */}
+              <div className="relative group">
+                <div className="absolute inset-0 bg-gradient-to-t from-purple-600/20 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <video
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  className="w-full h-64 object-cover rounded-2xl shadow-2xl group-hover:shadow-purple-500/30 transition-all duration-500 transform group-hover:scale-105"
+                >
+                  <source src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/media%20player%20visual-AL4Yf9WIU1HtEWbeiS5rvOTJhhjCvL.mp4" type="video/mp4" />
+                </video>
+                <div className="absolute bottom-4 left-4 right-4">
+                  <div className="bg-black/80 backdrop-blur-sm rounded-lg p-4">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-red-500 rounded-full flex items-center justify-center">
+                        <Play className="h-5 w-5 text-white ml-0.5" fill="currentColor" />
+                      </div>
+                      <div>
+                        <p className="text-white font-semibold text-sm">Industry Insights Podcast</p>
+                        <p className="text-gray-300 text-xs">Latest episode with industry legends</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Interactive Waveform Player - Different Track */}
+              <WaveformPlayer trackTitle="Last Submission" artist="Your Track" duration={195} />
+
+              {/* Sign In Form */}
+              <SignInForm />
+
+              {/* Additional Encouragement */}
+              <div className="text-center space-y-3">
+                <p className="text-gray-400 text-sm">🔒 Secure login with industry-grade encryption</p>
+                <p className="text-purple-400 text-sm font-medium">
+                  Don't have an account?{" "}
+                  <a href="/signup" className="text-blue-400 hover:text-blue-300 underline">
+                    Join the community
+                  </a>
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom Section - Success Stories */}
+      <div className="border-t border-gray-800 bg-gray-900/50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          <div className="text-center mb-8">
+            <h2 className="text-2xl md:text-3xl font-bold text-white mb-4">Recent Success Stories</h2>
+            <p className="text-gray-400 max-w-2xl mx-auto">
+              See what our community members have achieved with their submissions
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            {[
+              {
+                achievement: "TV Placement",
+                show: "Power Book II: Ghost",
+                artist: "Marcus J.",
+                description: "Hip-hop track placed in season finale",
+                badge: "🏆 Recent Placement",
+              },
+              {
+                achievement: "Producer Feedback",
+                show: "Direct from Rockwilder",
+                artist: "Sarah M.",
+                description: "Received detailed feedback and collaboration offer",
+                badge: "💬 Producer Response",
+              },
+              {
+                achievement: "Sync Deal",
+                show: "Major Commercial",
+                artist: "The Collective",
+                description: "30-second sync for national brand campaign",
+                badge: "💰 Sync Success",
+              },
+            ].map((story, index) => (
+              <div
+                key={index}
+                className="bg-gray-900/50 border border-gray-700 rounded-lg p-6 hover:bg-gray-900/70 transition-all duration-300"
+              >
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-white font-bold text-lg">{story.achievement}</h3>
+                    <span className="text-xs bg-gradient-to-r from-purple-600 to-blue-600 text-white px-2 py-1 rounded-full">
+                      {story.badge}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-purple-400 font-medium">{story.show}</p>
+                    <p className="text-gray-400 text-sm">by {story.artist}</p>
+                  </div>
+                  <p className="text-gray-300 text-sm">{story.description}</p>
+                  <div className="flex items-center space-x-2">
+                    <div className="flex -space-x-1">
+                      {[1, 2, 3, 4, 5].map((i) => (
+                        <Star key={i} className="h-4 w-4 text-yellow-400 fill-current" />
+                      ))}
+                    </div>
+                    <span className="text-gray-400 text-xs">Verified success</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="text-center mt-12">
+            <p className="text-gray-300 text-lg mb-6">
+              Your success story could be next. Log in and continue your journey.
+            </p>
+            <div className="inline-flex items-center space-x-2 text-green-400 font-medium">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+              <span>✅ Secure platform • ✅ Industry connections • ✅ Real opportunities</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   )
