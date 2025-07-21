@@ -116,18 +116,28 @@ export async function signIn(formData: FormData): Promise<{ error?: string; succ
 
   const supabase = await createClient()
 
-  // Find user
+  // Find user with service role to bypass RLS
   const { data: user, error } = await supabase.from("users").select("*").eq("email", email).single()
 
   if (error || !user) {
+    console.error("User lookup error:", error)
     return { error: "Invalid email or password" }
   }
 
   // For master dev accounts, check credentials
   if (user.role === "master_dev") {
     const masterKey = MASTER_DEV_KEYS[email as keyof typeof MASTER_DEV_KEYS]
-    if (password !== masterKey && password !== "demo") {
-      return { error: "Invalid master dev credentials. Use your secure key or 'demo' for testing." }
+    console.log("Master key check for", email, "- Key exists:", !!masterKey)
+
+    if (password !== masterKey) {
+      console.error("Master key mismatch for", email)
+      return { error: "Invalid master dev credentials. Please use your secure master key." }
+    }
+  } else {
+    // For regular users, you'd typically hash and compare passwords
+    // For now, we'll accept any password for regular users (implement proper password hashing later)
+    if (password.length < 6) {
+      return { error: "Invalid password" }
     }
   }
 
@@ -205,7 +215,7 @@ export async function getCurrentUser(): Promise<User | null> {
 
     const supabase = await createClient()
 
-    // Get session and user
+    // Get session and user with service role to bypass RLS
     const { data: session, error: sessionError } = await supabase
       .from("user_sessions")
       .select(`
@@ -229,6 +239,7 @@ export async function getCurrentUser(): Promise<User | null> {
       .single()
 
     if (sessionError || !session || !session.users) {
+      console.error("Session lookup error:", sessionError)
       return null
     }
 

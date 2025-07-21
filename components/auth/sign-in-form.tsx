@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Loader2, Mail, Lock, Key, Info } from "lucide-react"
+import { Loader2, Mail, Lock } from "lucide-react"
 import Link from "next/link"
 import { signIn } from "@/lib/supabase/auth"
 
@@ -38,31 +38,6 @@ export function SignInForm() {
     } catch (err) {
       console.error("SignIn error:", err)
       setError("Something went wrong. Please try again.")
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const quickLogin = async (testEmail: string, testPassword: string) => {
-    setEmail(testEmail)
-    setPassword(testPassword)
-
-    const formData = new FormData()
-    formData.append("email", testEmail)
-    formData.append("password", testPassword)
-
-    setIsLoading(true)
-    setError("")
-
-    try {
-      const result = await signIn(formData)
-      if (result.error) {
-        setError(result.error)
-      } else {
-        window.location.href = "/dashboard"
-      }
-    } catch (err) {
-      setError("Quick login failed")
     } finally {
       setIsLoading(false)
     }
@@ -142,48 +117,6 @@ export function SignInForm() {
                 Sign up
               </Link>
             </p>
-
-            <div className="pt-4 border-t border-gray-700">
-              <div className="flex items-center justify-center mb-3">
-                <Key className="h-4 w-4 text-purple-400 mr-2" />
-                <p className="text-xs text-purple-400 font-medium">Master Dev Quick Login</p>
-              </div>
-
-              <div className="space-y-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => quickLogin("2668harris@gmail.com", "demo")}
-                  disabled={isLoading}
-                  className="w-full text-xs bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700"
-                >
-                  Login as Harris (Demo)
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => quickLogin("ipxsdev@gmail.com", "demo")}
-                  disabled={isLoading}
-                  className="w-full text-xs bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700"
-                >
-                  Login as IPXS Dev (Demo)
-                </Button>
-              </div>
-
-              <div className="mt-3 p-2 bg-blue-900/20 border border-blue-700/50 rounded">
-                <div className="flex items-start space-x-2">
-                  <Info className="h-4 w-4 text-blue-400 mt-0.5 flex-shrink-0" />
-                  <div className="text-xs text-blue-200">
-                    <p className="font-medium mb-1">Database-powered auth:</p>
-                    <p>• Use "demo" as password</p>
-                    <p>• Or use your secure master key</p>
-                    <p>• Data persists in Supabase</p>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
         </form>
       </CardContent>
