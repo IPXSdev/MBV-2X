@@ -144,6 +144,10 @@ export function AdminPortal({ user }: { user: any }) {
   const [currentlyPlaying, setCurrentlyPlaying] = useState<string | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
 
+  // Bulk actions and selection
+  const [selectedSubmissions, setSelectedSubmissions] = useState<string[]>([])
+  const [bulkAction, setBulkAction] = useState("")
+
   useEffect(() => {
     loadData()
   }, [submissionFilter, submissionSearch, userFilter, userSearch, currentPage])
@@ -230,6 +234,96 @@ export function AdminPortal({ user }: { user: any }) {
       }
     } catch (err) {
       setError("Error submitting review")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDeleteSubmission = async (submissionId: string) => {
+    if (!confirm("Are you sure you want to delete this submission? This action cannot be undone.")) {
+      return
+    }
+
+    try {
+      setLoading(true)
+      const response = await fetch(`/api/admin/submissions/${submissionId}`, {
+        method: "DELETE",
+      })
+
+      if (response.ok) {
+        setSuccess("Submission deleted successfully")
+        loadData()
+      } else {
+        const errorData = await response.json()
+        setError(errorData.error || "Failed to delete submission")
+      }
+    } catch (err) {
+      setError("Error deleting submission")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleBulkAction = async (action: string, submissionIds: string[]) => {
+    if (submissionIds.length === 0) {
+      setError("Please select submissions to perform bulk action")
+      return
+    }
+
+    if (!confirm(`Are you sure you want to ${action} ${submissionIds.length} submission(s)?`)) {
+      return
+    }
+
+    try {
+      setLoading(true)
+      const response = await fetch("/api/admin/submissions/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          submissionIds,
+        }),
+      })
+
+      if (response.ok) {
+        setSuccess(`Bulk ${action} completed successfully`)
+        setSelectedSubmissions([])
+        loadData()
+      } else {
+        const errorData = await response.json()
+        setError(errorData.error || `Failed to perform bulk ${action}`)
+      }
+    } catch (err) {
+      setError(`Error performing bulk ${action}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleExportSubmissions = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch("/api/admin/submissions/export", {
+        method: "GET",
+      })
+
+      if (response.ok) {
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement("a")
+        a.href = url
+        a.download = `submissions-export-${new Date().toISOString().split("T")[0]}.csv`
+        document.body.appendChild(a)
+        a.click()
+        window.URL.revokeObjectURL(url)
+        document.body.removeChild(a)
+        setSuccess("Submissions exported successfully")
+      } else {
+        const errorData = await response.json()
+        setError(errorData.error || "Failed to export submissions")
+      }
+    } catch (err) {
+      setError("Error exporting submissions")
     } finally {
       setLoading(false)
     }
@@ -555,8 +649,57 @@ export function AdminPortal({ user }: { user: any }) {
                     <SelectItem value="rejected">Rejected</SelectItem>
                   </SelectContent>
                 </Select>
+                <Button
+                  onClick={handleExportSubmissions}
+                  variant="outline"
+                  className="border-gray-600 bg-transparent"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Export
+                </Button>
               </div>
             </div>
+
+            {/* Bulk Actions */}
+            {selectedSubmissions.length > 0 && (
+              <Card className="bg-blue-900/20 border-blue-700">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-blue-200">
+                      {selectedSubmissions.length} submission(s) selected
+                    </span>
+                    <div className="flex items-center space-x-2">
+                      <Select value={bulkAction} onValueChange={setBulkAction}>
+                        <SelectTrigger className="w-40 bg-gray-800 border-gray-700 text-white">
+                          <SelectValue placeholder="Bulk Action" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-gray-800 border-gray-700">
+                          <SelectItem value="approve">Approve All</SelectItem>
+                          <SelectItem value="reject">Reject All</SelectItem>
+                          <SelectItem value="pending">Mark Pending</SelectItem>
+                          <SelectItem value="in_review">Mark In Review</SelectItem>
+                          <SelectItem value="delete">Delete All</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        onClick={() => handleBulkAction(bulkAction, selectedSubmissions)}
+                        disabled={!bulkAction}
+                        className="bg-blue-600 hover:bg-blue-700"
+                      >
+                        Apply
+                      </Button>
+                      <Button
+                        onClick={() => setSelectedSubmissions([])}
+                        variant="outline"
+                        className="border-gray-600"
+                      >
+                        Clear
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             <div className="grid gap-4">
               {submissions.length === 0 ? (
@@ -569,68 +712,143 @@ export function AdminPortal({ user }: { user: any }) {
                         ? "Try adjusting your filters"
                         : "Submissions will appear here when users start uploading"}
                     </p>
-                  </CardContent>
-                </Card>
-              ) : (
-                submissions.map((submission) => (
-                  <Card key={submission.id} className="bg-gray-800 border-gray-700">
-                    <CardContent className="p-6">
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-4 mb-3">
-                            <h3 className="text-lg font-semibold text-white">{submission.tracks.title}</h3>
-                            {getStatusBadge(submission.status)}
-                          </div>
-                          <div className="text-gray-400 space-y-1">
-                            <p className="flex items-center">
-                              <Headphones className="h-4 w-4 mr-2" />
-                              Artist: {submission.tracks.artist}
-                            </p>
-                            <p className="flex items-center">
-                              <Mail className="h-4 w-4 mr-2" />
-                              Submitted by: {submission.users.name} ({submission.users.email})
-                            </p>
-                            <p className="flex items-center">
-                              <Clock className="h-4 w-4 mr-2" />
-                              Duration: {formatDuration(submission.tracks.duration)}
-                            </p>
-                            <p className="flex items-center">
-                              <Calendar className="h-4 w-4 mr-2" />
-                              Submitted: {formatRelativeTime(submission.created_at)}
-                            </p>
-                          </div>
+                </CardContent>
+              </Card>
+            ) : (
+              submissions.map((submission) => (
+                <Card key={submission.id} className="bg-gray-800 border-gray-700">
+                  <CardContent className="p-6">
+                    <div className="flex items-start space-x-4">
+                      <input
+                        type="checkbox"
+                        checked={selectedSubmissions.includes(submission.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedSubmissions([...selectedSubmissions, submission.id])
+                          } else {
+                            setSelectedSubmissions(selectedSubmissions.filter(id => id !== submission.id))
+                          }
+                        }}
+                        className="mt-1 rounded border-gray-600 bg-gray-700"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-4 mb-3">
+                          <h3 className="text-lg font-semibold text-white">{submission.tracks.title}</h3>
+                          {getStatusBadge(submission.status)}
+                          <Badge className="bg-gray-600 text-white text-xs">
+                            ID: {submission.id.slice(0, 8)}
+                          </Badge>
                         </div>
+                        <div className="text-gray-400 space-y-1">
+                          <p className="flex items-center">
+                            <Headphones className="h-4 w-4 mr-2" />
+                            Artist: {submission.tracks.artist}
+                          </p>
+                          <p className="flex items-center">
+                            <Mail className="h-4 w-4 mr-2" />
+                            Submitted by: {submission.users.name} ({submission.users.email})
+                          </p>
+                          <p className="flex items-center">
+                            <Clock className="h-4 w-4 mr-2" />
+                            Duration: {formatDuration(submission.tracks.duration)}
+                          </p>
+                          <p className="flex items-center">
+                            <Calendar className="h-4 w-4 mr-2" />
+                            Submitted: {formatRelativeTime(submission.created_at)}
+                          </p>
+                          {submission.updated_at !== submission.created_at && (
+                            <p className="flex items-center">
+                              <RefreshCw className="h-4 w-4 mr-2" />
+                              Last updated: {formatRelativeTime(submission.updated_at)}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex flex-col space-y-2">
                         <div className="flex items-center space-x-2">
                           <Button
                             onClick={() => handlePlayAudio(submission.tracks.file_url, submission.id)}
                             variant="outline"
+                            size="sm"
                             className="border-gray-600 bg-transparent"
                           >
                             {currentlyPlaying === submission.id && isPlaying ? (
-                              <Pause className="h-4 w-4 mr-2" />
+                              <Pause className="h-4 w-4 mr-1" />
                             ) : (
-                              <Play className="h-4 w-4 mr-2" />
+                              <Play className="h-4 w-4 mr-1" />
                             )}
                             {currentlyPlaying === submission.id && isPlaying ? "Pause" : "Play"}
                           </Button>
+                          <Button
+                            onClick={() => window.open(submission.tracks.file_url, '_blank')}
+                            variant="outline"
+                            size="sm"
+                            className="border-gray-600 bg-transparent"
+                          >
+                            <Download className="h-4 w-4 mr-1" />
+                            Download
+                          </Button>
+                        </div>
+                        <div className="flex items-center space-x-2">
                           <Button
                             onClick={() => {
                               setReviewingSubmission(submission)
                               setReviewStatus(submission.status)
                             }}
+                            size="sm"
                             className="bg-blue-600 hover:bg-blue-700"
                           >
-                            <MessageSquare className="h-4 w-4 mr-2" />
+                            <MessageSquare className="h-4 w-4 mr-1" />
                             Review
+                          </Button>
+                          <Button
+                            onClick={() => handleDeleteSubmission(submission.id)}
+                            variant="destructive"
+                            size="sm"
+                            className="bg-red-600 hover:bg-red-700"
+                          >
+                            <Trash2 className="h-4 w-4 mr-1" />
+                            Delete
                           </Button>
                         </div>
                       </div>
-                    </CardContent>
-                  </Card>
-                ))
-              )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+
+          {/* Pagination */}
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-gray-400">
+              Showing {Math.min((currentPage - 1) * 10 + 1, submissions.length)} to {Math.min(currentPage * 10, submissions.length)} of {submissions.length} submissions
             </div>
-          </TabsContent>
+            <div className="flex items-center space-x-2">
+              <Button
+                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+                variant="outline"
+                size="sm"
+                className="border-gray-600"
+              >
+                Previous
+              </Button>
+              <span className="text-sm text-gray-400">
+                Page {currentPage}
+              </span>
+              <Button
+                onClick={() => setCurrentPage(currentPage + 1)}
+                disabled={submissions.length < 10}
+                variant="outline"
+                size="sm"
+                className="border-gray-600"
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        </TabsContent>
 
           {/* Users Tab */}
           <TabsContent value="users" className="space-y-6">
@@ -658,7 +876,6 @@ export function AdminPortal({ user }: { user: any }) {
                   </SelectContent>
                 </Select>
               </div>
-            </div>
 
             <div className="grid gap-4">
               {users.length === 0 ? (
@@ -955,19 +1172,41 @@ export function AdminPortal({ user }: { user: any }) {
                     <div className="space-y-4">
                       <h3 className="text-lg font-semibold text-white">System Controls</h3>
                       <div className="space-y-2">
-                        <Button className="w-full bg-orange-600 hover:bg-orange-700">
+                        <Button
+                          onClick={() => router.push('/admin/settings')}
+                          className="w-full bg-orange-600 hover:bg-orange-700"
+                        >
                           <Settings className="h-4 w-4 mr-2" />
                           System Settings
                         </Button>
-                        <Button className="w-full bg-purple-600 hover:bg-purple-700">
+                        <Button
+                          onClick={async () => {
+                            setLoading(true)
+                            try {
+                              await fetch('/api/admin/system/clear-cache', { method: 'POST' })
+                              setSuccess('All caches cleared successfully')
+                            } catch (err) {
+                              setError('Failed to clear caches')
+                            } finally {
+                              setLoading(false)
+                            }
+                          }}
+                          className="w-full bg-purple-600 hover:bg-purple-700"
+                        >
                           <RefreshCw className="h-4 w-4 mr-2" />
                           Clear All Caches
                         </Button>
-                        <Button className="w-full bg-blue-600 hover:bg-blue-700">
+                        <Button
+                          onClick={() => router.push('/admin/database')}
+                          className="w-full bg-blue-600 hover:bg-blue-700"
+                        >
                           <Database className="h-4 w-4 mr-2" />
                           Database Tools
                         </Button>
-                        <Button className="w-full bg-green-600 hover:bg-green-700">
+                        <Button
+                          onClick={() => router.push('/admin/server-status')}
+                          className="w-full bg-green-600 hover:bg-green-700"
+                        >
                           <Server className="h-4 w-4 mr-2" />
                           Server Status
                         </Button>
@@ -976,15 +1215,51 @@ export function AdminPortal({ user }: { user: any }) {
                     <div className="space-y-4">
                       <h3 className="text-lg font-semibold text-white">Emergency Controls</h3>
                       <div className="space-y-2">
-                        <Button className="w-full bg-yellow-600 hover:bg-yellow-700">
+                        <Button
+                          onClick={() => router.push('/admin/performance')}
+                          className="w-full bg-yellow-600 hover:bg-yellow-700"
+                        >
                           <Zap className="h-4 w-4 mr-2" />
                           Performance Monitor
                         </Button>
-                        <Button className="w-full bg-indigo-600 hover:bg-indigo-700">
+                        <Button
+                          onClick={async () => {
+                            setLoading(true)
+                            try {
+                              const response = await fetch('/api/admin/system/export-data')
+                              const blob = await response.blob()
+                              const url = window.URL.createObjectURL(blob)
+                              const a = document.createElement('a')
+                              a.href = url
+                              a.download = `system-export-${new Date().toISOString().split('T')[0]}.zip`
+                              document.body.appendChild(a)
+                              a.click()
+                              window.URL.revokeObjectURL(url)
+                              document.body.removeChild(a)
+                              setSuccess('System data exported successfully')
+                            } catch (err) {
+                              setError('Failed to export system data')
+                            } finally {
+                              setLoading(false)
+                            }
+                          }}
+                          className="w-full bg-indigo-600 hover:bg-indigo-700"
+                        >
                           <Download className="h-4 w-4 mr-2" />
                           Export Data
                         </Button>
-                        <Button className="w-full bg-red-600 hover:bg-red-700">
+                        <Button
+                          onClick={() => {
+                            if (confirm('Are you sure you want to perform an emergency reset? This will restart all services.')) {
+                              setLoading(true)
+                              fetch('/api/admin/system/emergency-reset', { method: 'POST' })
+                                .then(() => setSuccess('Emergency reset initiated'))
+                                .catch(() => setError('Failed to initiate emergency reset'))
+                                .finally(() => setLoading(false))
+                            }
+                          }}
+                          className="w-full bg-red-600 hover:bg-red-700"
+                        >
                           <AlertCircle className="h-4 w-4 mr-2" />
                           Emergency Reset
                         </Button>
@@ -1168,5 +1443,5 @@ export function AdminPortal({ user }: { user: any }) {
         )}
       </div>
     </div>
-  )
+  )\
 }
