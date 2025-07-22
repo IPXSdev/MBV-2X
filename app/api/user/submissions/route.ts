@@ -1,18 +1,20 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/supabase/auth"
-import { createServiceClient } from "@/lib/supabase/server"
+import { createClient } from "@/lib/supabase/server"
+
+// Force dynamic rendering for this API route
+export const dynamic = "force-dynamic"
 
 export async function GET(request: NextRequest) {
   try {
     const user = await getCurrentUser()
 
     if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 })
     }
 
-    const supabase = await createServiceClient()
+    const supabase = createClient()
 
-    // Get user submissions
     const { data: submissions, error } = await supabase
       .from("submissions")
       .select("*")
@@ -20,13 +22,13 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false })
 
     if (error) {
-      console.error("Error fetching submissions:", error)
+      console.error("Error fetching user submissions:", error)
       return NextResponse.json({ error: "Failed to fetch submissions" }, { status: 500 })
     }
 
-    return NextResponse.json({ submissions: submissions || [] })
+    return NextResponse.json({ submissions })
   } catch (error) {
-    console.error("Submissions API error:", error)
+    console.error("User submissions API error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

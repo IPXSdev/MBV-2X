@@ -1,54 +1,46 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/supabase/auth"
-import { createServiceClient } from "@/lib/supabase/server"
+import { createClient } from "@/lib/supabase/server"
+
+// Force dynamic rendering for this API route
+export const dynamic = "force-dynamic"
 
 export async function GET(request: NextRequest) {
   try {
     const user = await getCurrentUser()
 
     if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 })
     }
 
-    const supabase = await createServiceClient()
+    const supabase = createClient()
 
     // Get recent submissions as activity
-    const { data: submissions, error: submissionsError } = await supabase
+    const { data: submissions, error } = await supabase
       .from("submissions")
-      .select("id, title, status, created_at, updated_at")
+      .select("id, title, status, created_at")
       .eq("user_id", user.id)
-      .order("updated_at", { ascending: false })
+      .order("created_at", { ascending: false })
       .limit(10)
 
-    if (submissionsError) {
-      console.error("Error fetching submissions:", submissionsError)
+    if (error) {
+      console.error("Error fetching user activity:", error)
+      return NextResponse.json({ error: "Failed to fetch activity" }, { status: 500 })
     }
 
     // Transform submissions into activity format
-    const activity = (submissions || []).map((submission) => ({
-      id: submission.id,
-      type: "submission" as const,
-      title: `Track "${submission.title}" ${submission.status}`,
-      description: `Your submission has been ${submission.status.replace("_", " ")}`,
-      timestamp: submission.updated_at,
-      status: submission.status,
-    }))
-
-    // Add some sample achievements and upgrades for demo
-    if (user.tier !== "creator") {
-      activity.push({
-        id: "upgrade-" + user.id,
-        type: "upgrade" as const,
-        title: `Upgraded to ${user.tier} tier`,
-        description: `You now have access to ${user.tier} features and submission credits`,
-        timestamp: user.updated_at,
-        status: "completed",
-      })
-    }
+    const activity =
+      submissions?.map((submission) => ({
+        id: submission.id,
+        type: "submission",
+        title: `Submitted "${submission.title}"`,
+        status: submission.status,
+        timestamp: submission.created_at,
+      })) || []
 
     return NextResponse.json({ activity })
   } catch (error) {
-    console.error("Activity API error:", error)
+    console.error("User activity API error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

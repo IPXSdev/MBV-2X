@@ -1,77 +1,62 @@
-import { NextResponse } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/supabase/auth"
-import { createServiceClient } from "@/lib/supabase/server"
+import { createClient } from "@/lib/supabase/server"
 
-export async function GET() {
+// Force dynamic rendering for this API route
+export const dynamic = "force-dynamic"
+
+export async function GET(request: NextRequest) {
   try {
     const user = await getCurrentUser()
 
-    if (!user) {
-      return NextResponse.json({ error: "Authentication required" }, { status: 401 })
+    if (!user || (user.role !== "admin" && user.role !== "master_dev")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
 
-    if (!["admin", "master_dev"].includes(user.role)) {
-      return NextResponse.json({ error: "Admin access required" }, { status: 403 })
-    }
-
-    const supabase = await createServiceClient()
-
-    // Get submission stats
-    const { data: submissions, error: submissionsError } = await supabase.from("submissions").select("status")
-
-    if (submissionsError) {
-      console.error("Error fetching submissions:", submissionsError)
-    }
+    const supabase = createClient()
 
     // Get user stats
-    const { data: users, error: usersError } = await supabase.from("users").select("tier, role")
+    const { data: users, error: usersError } = await supabase.from("users").select("id, tier, created_at")
 
     if (usersError) {
       console.error("Error fetching users:", usersError)
+      return NextResponse.json({ error: "Failed to fetch user stats" }, { status: 500 })
     }
 
-    // Calculate stats with fallbacks
-    const submissionStats = {
-      total: submissions?.length || 0,
-      pending: submissions?.filter((s) => s.status === "pending").length || 0,
-      approved: submissions?.filter((s) => s.status === "approved").length || 0,
-      rejected: submissions?.filter((s) => s.status === "rejected").length || 0,
-      in_review: submissions?.filter((s) => s.status === "in_review").length || 0,
+    // Get submission stats
+    const { data: submissions, error: submissionsError } = await supabase
+      .from("submissions")
+      .select("id, status, created_at")
+
+    if (submissionsError) {
+      console.error("Error fetching submissions:", submissionsError)
+      return NextResponse.json({ error: "Failed to fetch submission stats" }, { status: 500 })
     }
 
-    const userStats = {
-      total: users?.length || 0,
-      creator: users?.filter((u) => u.tier === "creator").length || 0,
-      indie: users?.filter((u) => u.tier === "indie").length || 0,
-      pro: users?.filter((u) => u.tier === "pro").length || 0,
-      admins: users?.filter((u) => u.role === "admin" || u.role === "master_dev").length || 0,
-    }
-
-    // Get recent activity (last 30 days)
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
-
-    const { data: recentSubmissions } = await supabase.from("submissions").select("id").gte("created_at", thirtyDaysAgo)
-
-    const { data: recentUsers } = await supabase.from("users").select("id").gte("created_at", thirtyDaysAgo)
-
-    const activityStats = {
-      recentSubmissions: recentSubmissions?.length || 0,
-      recentUsers: recentUsers?.length || 0,
-    }
+    // Calculate stats
+    const totalUsers = users?.length || 0
+    const freeUsers = users?.filter((u) => u.tier === "free").length || 0
+    const proUsers = users?.filter((u) => u.tier === "pro").length || 0
+    const totalSubmissions = submissions?.length || 0
+    const pendingSubmissions = submissions?.filter((s) => s.status === "pending").length || 0
+    const approvedSubmissions = submissions?.filter((s) => s.status === "approved").length || 0
+    const rejectedSubmissions = submissions?.filter((s) => s.status === "rejected").length || 0
 
     return NextResponse.json({
-      submissions: submissionStats,
-      users: userStats,
-      activity: activityStats,
+      users: {
+        total: totalUsers,
+        free: freeUsers,
+        pro: proUsers,
+      },
+      submissions: {
+        total: totalSubmissions,
+        pending: pendingSubmissions,
+        approved: approvedSubmissions,
+        rejected: rejectedSubmissions,
+      },
     })
   } catch (error) {
     console.error("Admin stats API error:", error)
-    return NextResponse.json(
-      {
-        error: "Internal server error",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 },
-    )
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
