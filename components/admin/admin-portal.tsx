@@ -649,11 +649,7 @@ export function AdminPortal({ user }: { user: any }) {
                     <SelectItem value="rejected">Rejected</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button
-                  onClick={handleExportSubmissions}
-                  variant="outline"
-                  className="border-gray-600 bg-transparent"
-                >
+                <Button onClick={handleExportSubmissions} variant="outline" className="border-gray-600 bg-transparent">
                   <Download className="h-4 w-4 mr-2" />
                   Export
                 </Button>
@@ -665,9 +661,7 @@ export function AdminPortal({ user }: { user: any }) {
               <Card className="bg-blue-900/20 border-blue-700">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
-                    <span className="text-blue-200">
-                      {selectedSubmissions.length} submission(s) selected
-                    </span>
+                    <span className="text-blue-200">{selectedSubmissions.length} submission(s) selected</span>
                     <div className="flex items-center space-x-2">
                       <Select value={bulkAction} onValueChange={setBulkAction}>
                         <SelectTrigger className="w-40 bg-gray-800 border-gray-700 text-white">
@@ -688,11 +682,7 @@ export function AdminPortal({ user }: { user: any }) {
                       >
                         Apply
                       </Button>
-                      <Button
-                        onClick={() => setSelectedSubmissions([])}
-                        variant="outline"
-                        className="border-gray-600"
-                      >
+                      <Button onClick={() => setSelectedSubmissions([])} variant="outline" className="border-gray-600">
                         Clear
                       </Button>
                     </div>
@@ -712,143 +702,140 @@ export function AdminPortal({ user }: { user: any }) {
                         ? "Try adjusting your filters"
                         : "Submissions will appear here when users start uploading"}
                     </p>
-                </CardContent>
-              </Card>
-            ) : (
-              submissions.map((submission) => (
-                <Card key={submission.id} className="bg-gray-800 border-gray-700">
-                  <CardContent className="p-6">
-                    <div className="flex items-start space-x-4">
-                      <input
-                        type="checkbox"
-                        checked={selectedSubmissions.includes(submission.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedSubmissions([...selectedSubmissions, submission.id])
-                          } else {
-                            setSelectedSubmissions(selectedSubmissions.filter(id => id !== submission.id))
-                          }
-                        }}
-                        className="mt-1 rounded border-gray-600 bg-gray-700"
-                      />
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-4 mb-3">
-                          <h3 className="text-lg font-semibold text-white">{submission.tracks.title}</h3>
-                          {getStatusBadge(submission.status)}
-                          <Badge className="bg-gray-600 text-white text-xs">
-                            ID: {submission.id.slice(0, 8)}
-                          </Badge>
-                        </div>
-                        <div className="text-gray-400 space-y-1">
-                          <p className="flex items-center">
-                            <Headphones className="h-4 w-4 mr-2" />
-                            Artist: {submission.tracks.artist}
-                          </p>
-                          <p className="flex items-center">
-                            <Mail className="h-4 w-4 mr-2" />
-                            Submitted by: {submission.users.name} ({submission.users.email})
-                          </p>
-                          <p className="flex items-center">
-                            <Clock className="h-4 w-4 mr-2" />
-                            Duration: {formatDuration(submission.tracks.duration)}
-                          </p>
-                          <p className="flex items-center">
-                            <Calendar className="h-4 w-4 mr-2" />
-                            Submitted: {formatRelativeTime(submission.created_at)}
-                          </p>
-                          {submission.updated_at !== submission.created_at && (
-                            <p className="flex items-center">
-                              <RefreshCw className="h-4 w-4 mr-2" />
-                              Last updated: {formatRelativeTime(submission.updated_at)}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex flex-col space-y-2">
-                        <div className="flex items-center space-x-2">
-                          <Button
-                            onClick={() => handlePlayAudio(submission.tracks.file_url, submission.id)}
-                            variant="outline"
-                            size="sm"
-                            className="border-gray-600 bg-transparent"
-                          >
-                            {currentlyPlaying === submission.id && isPlaying ? (
-                              <Pause className="h-4 w-4 mr-1" />
-                            ) : (
-                              <Play className="h-4 w-4 mr-1" />
-                            )}
-                            {currentlyPlaying === submission.id && isPlaying ? "Pause" : "Play"}
-                          </Button>
-                          <Button
-                            onClick={() => window.open(submission.tracks.file_url, '_blank')}
-                            variant="outline"
-                            size="sm"
-                            className="border-gray-600 bg-transparent"
-                          >
-                            <Download className="h-4 w-4 mr-1" />
-                            Download
-                          </Button>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <Button
-                            onClick={() => {
-                              setReviewingSubmission(submission)
-                              setReviewStatus(submission.status)
-                            }}
-                            size="sm"
-                            className="bg-blue-600 hover:bg-blue-700"
-                          >
-                            <MessageSquare className="h-4 w-4 mr-1" />
-                            Review
-                          </Button>
-                          <Button
-                            onClick={() => handleDeleteSubmission(submission.id)}
-                            variant="destructive"
-                            size="sm"
-                            className="bg-red-600 hover:bg-red-700"
-                          >
-                            <Trash2 className="h-4 w-4 mr-1" />
-                            Delete
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
                   </CardContent>
                 </Card>
-              ))
-            )}
-          </div>
+              ) : (
+                submissions.map((submission) => (
+                  <Card key={submission.id} className="bg-gray-800 border-gray-700">
+                    <CardContent className="p-6">
+                      <div className="flex items-start space-x-4">
+                        <input
+                          type="checkbox"
+                          checked={selectedSubmissions.includes(submission.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedSubmissions([...selectedSubmissions, submission.id])
+                            } else {
+                              setSelectedSubmissions(selectedSubmissions.filter((id) => id !== submission.id))
+                            }
+                          }}
+                          className="mt-1 rounded border-gray-600 bg-gray-700"
+                        />
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-4 mb-3">
+                            <h3 className="text-lg font-semibold text-white">{submission.tracks.title}</h3>
+                            {getStatusBadge(submission.status)}
+                            <Badge className="bg-gray-600 text-white text-xs">ID: {submission.id.slice(0, 8)}</Badge>
+                          </div>
+                          <div className="text-gray-400 space-y-1">
+                            <p className="flex items-center">
+                              <Headphones className="h-4 w-4 mr-2" />
+                              Artist: {submission.tracks.artist}
+                            </p>
+                            <p className="flex items-center">
+                              <Mail className="h-4 w-4 mr-2" />
+                              Submitted by: {submission.users.name} ({submission.users.email})
+                            </p>
+                            <p className="flex items-center">
+                              <Clock className="h-4 w-4 mr-2" />
+                              Duration: {formatDuration(submission.tracks.duration)}
+                            </p>
+                            <p className="flex items-center">
+                              <Calendar className="h-4 w-4 mr-2" />
+                              Submitted: {formatRelativeTime(submission.created_at)}
+                            </p>
+                            {submission.updated_at !== submission.created_at && (
+                              <p className="flex items-center">
+                                <RefreshCw className="h-4 w-4 mr-2" />
+                                Last updated: {formatRelativeTime(submission.updated_at)}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex flex-col space-y-2">
+                          <div className="flex items-center space-x-2">
+                            <Button
+                              onClick={() => handlePlayAudio(submission.tracks.file_url, submission.id)}
+                              variant="outline"
+                              size="sm"
+                              className="border-gray-600 bg-transparent"
+                            >
+                              {currentlyPlaying === submission.id && isPlaying ? (
+                                <Pause className="h-4 w-4 mr-1" />
+                              ) : (
+                                <Play className="h-4 w-4 mr-1" />
+                              )}
+                              {currentlyPlaying === submission.id && isPlaying ? "Pause" : "Play"}
+                            </Button>
+                            <Button
+                              onClick={() => window.open(submission.tracks.file_url, "_blank")}
+                              variant="outline"
+                              size="sm"
+                              className="border-gray-600 bg-transparent"
+                            >
+                              <Download className="h-4 w-4 mr-1" />
+                              Download
+                            </Button>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Button
+                              onClick={() => {
+                                setReviewingSubmission(submission)
+                                setReviewStatus(submission.status)
+                              }}
+                              size="sm"
+                              className="bg-blue-600 hover:bg-blue-700"
+                            >
+                              <MessageSquare className="h-4 w-4 mr-1" />
+                              Review
+                            </Button>
+                            <Button
+                              onClick={() => handleDeleteSubmission(submission.id)}
+                              variant="destructive"
+                              size="sm"
+                              className="bg-red-600 hover:bg-red-700"
+                            >
+                              <Trash2 className="h-4 w-4 mr-1" />
+                              Delete
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+            </div>
 
-          {/* Pagination */}
-          <div className="flex items-center justify-between">
-            <div className="text-sm text-gray-400">
-              Showing {Math.min((currentPage - 1) * 10 + 1, submissions.length)} to {Math.min(currentPage * 10, submissions.length)} of {submissions.length} submissions
+            {/* Pagination */}
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-gray-400">
+                Showing {Math.min((currentPage - 1) * 10 + 1, submissions.length)} to{" "}
+                {Math.min(currentPage * 10, submissions.length)} of {submissions.length} submissions
+              </div>
+              <div className="flex items-center space-x-2">
+                <Button
+                  onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                  disabled={currentPage === 1}
+                  variant="outline"
+                  size="sm"
+                  className="border-gray-600"
+                >
+                  Previous
+                </Button>
+                <span className="text-sm text-gray-400">Page {currentPage}</span>
+                <Button
+                  onClick={() => setCurrentPage(currentPage + 1)}
+                  disabled={submissions.length < 10}
+                  variant="outline"
+                  size="sm"
+                  className="border-gray-600"
+                >
+                  Next
+                </Button>
+              </div>
             </div>
-            <div className="flex items-center space-x-2">
-              <Button
-                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                disabled={currentPage === 1}
-                variant="outline"
-                size="sm"
-                className="border-gray-600"
-              >
-                Previous
-              </Button>
-              <span className="text-sm text-gray-400">
-                Page {currentPage}
-              </span>
-              <Button
-                onClick={() => setCurrentPage(currentPage + 1)}
-                disabled={submissions.length < 10}
-                variant="outline"
-                size="sm"
-                className="border-gray-600"
-              >
-                Next
-              </Button>
-            </div>
-          </div>
-        </TabsContent>
+          </TabsContent>
 
           {/* Users Tab */}
           <TabsContent value="users" className="space-y-6">
@@ -876,6 +863,7 @@ export function AdminPortal({ user }: { user: any }) {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
 
             <div className="grid gap-4">
               {users.length === 0 ? (
@@ -1173,7 +1161,7 @@ export function AdminPortal({ user }: { user: any }) {
                       <h3 className="text-lg font-semibold text-white">System Controls</h3>
                       <div className="space-y-2">
                         <Button
-                          onClick={() => router.push('/admin/settings')}
+                          onClick={() => router.push("/admin/settings")}
                           className="w-full bg-orange-600 hover:bg-orange-700"
                         >
                           <Settings className="h-4 w-4 mr-2" />
@@ -1183,10 +1171,10 @@ export function AdminPortal({ user }: { user: any }) {
                           onClick={async () => {
                             setLoading(true)
                             try {
-                              await fetch('/api/admin/system/clear-cache', { method: 'POST' })
-                              setSuccess('All caches cleared successfully')
+                              await fetch("/api/admin/system/clear-cache", { method: "POST" })
+                              setSuccess("All caches cleared successfully")
                             } catch (err) {
-                              setError('Failed to clear caches')
+                              setError("Failed to clear caches")
                             } finally {
                               setLoading(false)
                             }
@@ -1197,14 +1185,14 @@ export function AdminPortal({ user }: { user: any }) {
                           Clear All Caches
                         </Button>
                         <Button
-                          onClick={() => router.push('/admin/database')}
+                          onClick={() => router.push("/admin/database")}
                           className="w-full bg-blue-600 hover:bg-blue-700"
                         >
                           <Database className="h-4 w-4 mr-2" />
                           Database Tools
                         </Button>
                         <Button
-                          onClick={() => router.push('/admin/server-status')}
+                          onClick={() => router.push("/admin/server-status")}
                           className="w-full bg-green-600 hover:bg-green-700"
                         >
                           <Server className="h-4 w-4 mr-2" />
@@ -1216,7 +1204,7 @@ export function AdminPortal({ user }: { user: any }) {
                       <h3 className="text-lg font-semibold text-white">Emergency Controls</h3>
                       <div className="space-y-2">
                         <Button
-                          onClick={() => router.push('/admin/performance')}
+                          onClick={() => router.push("/admin/performance")}
                           className="w-full bg-yellow-600 hover:bg-yellow-700"
                         >
                           <Zap className="h-4 w-4 mr-2" />
@@ -1226,19 +1214,19 @@ export function AdminPortal({ user }: { user: any }) {
                           onClick={async () => {
                             setLoading(true)
                             try {
-                              const response = await fetch('/api/admin/system/export-data')
+                              const response = await fetch("/api/admin/system/export-data")
                               const blob = await response.blob()
                               const url = window.URL.createObjectURL(blob)
-                              const a = document.createElement('a')
+                              const a = document.createElement("a")
                               a.href = url
-                              a.download = `system-export-${new Date().toISOString().split('T')[0]}.zip`
+                              a.download = `system-export-${new Date().toISOString().split("T")[0]}.zip`
                               document.body.appendChild(a)
                               a.click()
                               window.URL.revokeObjectURL(url)
                               document.body.removeChild(a)
-                              setSuccess('System data exported successfully')
+                              setSuccess("System data exported successfully")
                             } catch (err) {
-                              setError('Failed to export system data')
+                              setError("Failed to export system data")
                             } finally {
                               setLoading(false)
                             }
@@ -1250,11 +1238,15 @@ export function AdminPortal({ user }: { user: any }) {
                         </Button>
                         <Button
                           onClick={() => {
-                            if (confirm('Are you sure you want to perform an emergency reset? This will restart all services.')) {
+                            if (
+                              confirm(
+                                "Are you sure you want to perform an emergency reset? This will restart all services.",
+                              )
+                            ) {
                               setLoading(true)
-                              fetch('/api/admin/system/emergency-reset', { method: 'POST' })
-                                .then(() => setSuccess('Emergency reset initiated'))
-                                .catch(() => setError('Failed to initiate emergency reset'))
+                              fetch("/api/admin/system/emergency-reset", { method: "POST" })
+                                .then(() => setSuccess("Emergency reset initiated"))
+                                .catch(() => setError("Failed to initiate emergency reset"))
                                 .finally(() => setLoading(false))
                             }
                           }}
@@ -1443,5 +1435,5 @@ export function AdminPortal({ user }: { user: any }) {
         )}
       </div>
     </div>
-  )\
+  )
 }

@@ -1,131 +1,121 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getCurrentUser } from "@/lib/supabase/auth"
-import { createServiceClient } from "@/lib/supabase/server"
-
-export const dynamic = "force-dynamic"
-
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
-  try {
-    const user = await getCurrentUser()
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const supabase = await createServiceClient()
-
-    // Get submission - users can only access their own submissions unless they're admin
-    const query = supabase.from("submissions").select("*").eq("id", params.id)
-
-    if (user.role !== "admin") {
-      query.eq("user_id", user.id)
-    }
-
-    const { data: submission, error } = await query.single()
-
-    if (error) {
-      console.error("Submission fetch error:", error)
-      return NextResponse.json({ error: "Submission not found" }, { status: 404 })
-    }
-
-    return NextResponse.json({ submission })
-  } catch (error) {
-    console.error("Submission API error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
-  }
-}
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
+import { cookies } from "next/headers"
 
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const user = await getCurrentUser()
+    const submissionId = params.id
+    const supabase = createRouteHandlerClient({ cookies })
 
-    if (!user) {
+    // Check authentication
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const supabase = await createServiceClient()
-
-    // Get submission to verify ownership and status
+    // Get the submission to check ownership and status
     const { data: submission, error: fetchError } = await supabase
       .from("submissions")
       .select("*")
-      .eq("id", params.id)
-      .eq("user_id", user.id) // Users can only delete their own submissions
+      .eq("id", submissionId)
+      .eq("user_id", session.user.id)
       .single()
 
     if (fetchError || !submission) {
       return NextResponse.json({ error: "Submission not found" }, { status: 404 })
     }
 
-    // Only allow deletion of pending submissions
+    // Only pending submissions can be deleted
     if (submission.status !== "pending") {
-      return NextResponse.json({ error: "Only pending submissions can be deleted" }, { status: 400 })
+      return NextResponse.json({ error: "Only pending submissions can be deleted" }, { status: 403 })
     }
 
-    // Delete the file from storage
-    if (submission.file_url) {
-      try {
-        // Extract file path from URL
-        const url = new URL(submission.file_url)
-        const pathParts = url.pathname.split("/")
-        const fileName = pathParts[pathParts.length - 1]
-        const filePath = `${user.id}/${fileName}`
-
-        await supabase.storage.from("submissions").remove([filePath])
-      } catch (storageError) {
-        console.error("Storage deletion error:", storageError)
-        // Continue with submission deletion even if file deletion fails
-      }
-    }
-
-    // Delete submission record
+    // Delete the submission
     const { error: deleteError } = await supabase
       .from("submissions")
       .delete()
-      .eq("id", params.id)
-      .eq("user_id", user.id)
+      .eq("id", submissionId)
+      .eq("user_id", session.user.id)
 
     if (deleteError) {
-      console.error("Submission deletion error:", deleteError)
-      return NextResponse.json({ error: "Failed to delete submission" }, { status: 500 })
+      throw deleteError
     }
 
-    // Refund submission credit for pending submissions (unless unlimited)
-    if (user.submission_credits !== 999999) {
+    // Get user data to check tier
+    const { data: userData, error: userError } = await supabase
+      .from("users")
+      .select("tier, submission_credits")
+      .eq("id", session.user.id)
+      .single()
+
+    if (userError) {
+      console.error("Error fetching user data:", userError)
+      // Continue anyway, the submission is already deleted
+    } else if (userData && userData.tier !== "pro") {
+      // Refund credit if not pro tier
       const { error: creditError } = await supabase
         .from("users")
-        .update({
-          submission_credits: user.submission_credits + 1,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", user.id)
+        .update({ submission_credits: userData.submission_credits + 1 })
+        .eq("id", session.user.id)
 
       if (creditError) {
-        console.error("Credit refund error:", creditError)
-        // Don't fail the deletion if credit refund fails, just log it
+        console.error("Error refunding credit:", creditError)
+        // Continue anyway, the submission is already deleted
       }
     }
 
-    // Log activity
-    try {
-      await supabase.from("user_activity").insert({
-        user_id: user.id,
-        type: "submission_deleted",
-        title: "Submission Deleted",
-        description: `Deleted "${submission.title}" by ${submission.artist_name}`,
-        metadata: {
-          submission_id: submission.id,
-          refunded_credit: user.submission_credits !== 999999,
-        },
-      })
-    } catch (error) {
-      console.error("Activity logging error:", error)
-      // Don't fail deletion if activity logging fails
+    // Delete the file from storage
+    // Extract the path from the URL
+    const fileUrl = submission.file_url
+    const storageUrl = supabase.storage.from("audio").getPublicUrl("").data.publicUrl
+    const filePath = fileUrl.replace(storageUrl, "")
+
+    if (filePath) {
+      const { error: storageError } = await supabase.storage.from("audio").remove([filePath])
+
+      if (storageError) {
+        console.error("Error deleting file:", storageError)
+        // Continue anyway, the submission record is already deleted
+      }
     }
 
-    return NextResponse.json({ success: true, message: "Submission deleted successfully" })
-  } catch (error) {
-    console.error("Delete submission API error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    return NextResponse.json({ success: true })
+  } catch (error: any) {
+    console.error("Error deleting submission:", error)
+    return NextResponse.json({ error: error.message || "Failed to delete submission" }, { status: 500 })
+  }
+}
+
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+  try {
+    const submissionId = params.id
+    const supabase = createRouteHandlerClient({ cookies })
+
+    // Check authentication
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    // Get the submission
+    const { data: submission, error } = await supabase
+      .from("submissions")
+      .select("*")
+      .eq("id", submissionId)
+      .eq("user_id", session.user.id)
+      .single()
+
+    if (error || !submission) {
+      return NextResponse.json({ error: "Submission not found" }, { status: 404 })
+    }
+
+    return NextResponse.json(submission)
+  } catch (error: any) {
+    console.error("Error fetching submission:", error)
+    return NextResponse.json({ error: error.message || "Failed to fetch submission" }, { status: 500 })
   }
 }

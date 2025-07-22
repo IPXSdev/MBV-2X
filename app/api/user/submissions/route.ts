@@ -14,12 +14,12 @@ export async function GET(request: NextRequest) {
 
     const supabase = await createServiceClient()
 
-    // Get user submissions
+    // Get user submissions - using submitted_at instead of created_at
     const { data: submissions, error } = await supabase
       .from("submissions")
       .select("*")
       .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
+      .order("submitted_at", { ascending: false })
 
     if (error) {
       console.error("Error fetching submissions:", error)

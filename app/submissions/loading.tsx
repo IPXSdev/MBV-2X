@@ -1,3 +1,5 @@
+import { Loader2 } from "lucide-react"
+
 export default function SubmissionsLoading() {
   return (
     <div className="min-h-screen bg-gray-900 text-white">
@@ -69,6 +71,14 @@ export default function SubmissionsLoading() {
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Loading Indicator */}
+        <div className="min-h-screen bg-gray-900 text-white p-6 flex items-center justify-center">
+          <div className="text-center">
+            <Loader2 className="h-8 w-8 animate-spin text-blue-500 mx-auto mb-4" />
+            <p className="text-xl">Loading your submissions...</p>
+          </div>
         </div>
       </div>
     </div>

@@ -2,54 +2,50 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { WaveformPlayer } from "@/components/ui/waveform-player"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
   Music,
   Search,
-  Filter,
   Download,
   Trash2,
-  Eye,
-  Calendar,
+  RefreshCw,
   Clock,
-  Star,
-  TrendingUp,
   CheckCircle,
-  XCircle,
-  Plus,
-  ArrowUpDown,
+  AlertCircle,
+  MessageSquare,
+  Calendar,
+  Star,
+  Headphones,
+  Play,
+  Pause,
+  Filter,
+  SortAsc,
+  SortDesc,
+  Loader2,
+  Info,
 } from "lucide-react"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { formatRelativeTime } from "@/lib/utils"
 
 interface Submission {
   id: string
   title: string
-  artist_name: string
+  artist: string
   genre: string
+  description: string
   mood_tags: string[]
-  status: "pending" | "approved" | "rejected"
   file_url: string
-  description?: string
+  status: string
+  feedback: string | null
+  rating: number | null
   created_at: string
   updated_at: string
-  admin_feedback?: {
-    rating: number
-    comments: string
-    reviewer_name: string
-    reviewed_at: string
-  }
 }
 
 interface SubmissionStats {
@@ -60,446 +56,659 @@ interface SubmissionStats {
   success_rate: number
 }
 
-const statusColors = {
-  pending: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
-  approved: "bg-green-500/20 text-green-300 border-green-500/30",
-  rejected: "bg-red-500/20 text-red-300 border-red-500/30",
-}
-
-const statusIcons = {
-  pending: Clock,
-  approved: CheckCircle,
-  rejected: XCircle,
-}
-
 export default function SubmissionsPage() {
+  const [user, setUser] = useState<any>(null)
   const [submissions, setSubmissions] = useState<Submission[]>([])
-  const [stats, setStats] = useState<SubmissionStats>({
-    total: 0,
-    pending: 0,
-    approved: 0,
-    rejected: 0,
-    success_rate: 0,
-  })
+  const [stats, setStats] = useState<SubmissionStats | null>(null)
   const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState("")
-  const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [sortBy, setSortBy] = useState<string>("newest")
-  const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null)
-  const [feedbackDialogOpen, setFeedbackDialogOpen] = useState(false)
+  const [error, setError] = useState("")
+  const [success, setSuccess] = useState("")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
   const router = useRouter()
+  const supabase = createClientComponentClient()
+
+  // Filters and search
+  const [statusFilter, setStatusFilter] = useState("all")
+  const [searchQuery, setSearchQuery] = useState("")
+  const [sortBy, setSortBy] = useState("created_at")
+  const [sortOrder, setSortOrder] = useState("desc")
+
+  // Audio player state
+  const [currentlyPlaying, setCurrentlyPlaying] = useState<string | null>(null)
+  const [isPlaying, setIsPlaying] = useState(false)
+
+  // Feedback modal
+  const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null)
+  const [feedbackModalOpen, setFeedbackModalOpen] = useState(false)
+
+  // Delete confirmation
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [submissionToDelete, setSubmissionToDelete] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
-    fetchSubmissions()
-  }, [])
+    async function loadUserData() {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
 
-  const fetchSubmissions = async () => {
-    try {
-      const response = await fetch("/api/user/submissions")
-      if (response.ok) {
-        const data = await response.json()
-        setSubmissions(data.submissions)
-        calculateStats(data.submissions)
-      } else if (response.status === 401) {
-        router.push("/login?redirect=/submissions")
+        if (!session) {
+          router.push("/login?redirect=/submissions")
+          return
+        }
+
+        const { data: userData, error: userError } = await supabase
+          .from("users")
+          .select("*")
+          .eq("id", session.user.id)
+          .single()
+
+        if (userError) {
+          throw userError
+        }
+
+        setUser(userData)
+        loadSubmissions(userData.id)
+      } catch (err) {
+        console.error("Error loading user data:", err)
+        setError("Failed to load user data")
+        setLoading(false)
       }
-    } catch (error) {
-      console.error("Failed to fetch submissions:", error)
+    }
+
+    loadUserData()
+  }, [router, supabase])
+
+  const loadSubmissions = async (userId: string) => {
+    try {
+      setLoading(true)
+      setError("")
+
+      // Build query
+      let query = supabase
+        .from("submissions")
+        .select("*")
+        .eq("user_id", userId)
+        .order(sortBy, { ascending: sortOrder === "asc" })
+
+      // Apply status filter
+      if (statusFilter !== "all") {
+        query = query.eq("status", statusFilter)
+      }
+
+      // Apply search filter
+      if (searchQuery) {
+        query = query.or(`title.ilike.%${searchQuery}%,artist.ilike.%${searchQuery}%,genre.ilike.%${searchQuery}%`)
+      }
+
+      // Pagination
+      const from = (currentPage - 1) * 10
+      const to = from + 9
+      query = query.range(from, to)
+
+      const { data: submissions, error: submissionsError, count } = await query
+
+      if (submissionsError) {
+        throw submissionsError
+      }
+
+      setSubmissions(submissions || [])
+
+      if (count !== null) {
+        setTotalPages(Math.ceil(count / 10))
+      }
+
+      // Load stats
+      const { data: statsData, error: statsError } = await supabase.rpc("get_user_submission_stats", {
+        user_id_param: userId,
+      })
+
+      if (statsError) {
+        console.error("Error loading stats:", statsError)
+      } else if (statsData) {
+        setStats(statsData)
+      }
+    } catch (err) {
+      console.error("Error loading submissions:", err)
+      setError("Failed to load submissions")
     } finally {
       setLoading(false)
     }
   }
 
-  const calculateStats = (submissionList: Submission[]) => {
-    const total = submissionList.length
-    const pending = submissionList.filter((s) => s.status === "pending").length
-    const approved = submissionList.filter((s) => s.status === "approved").length
-    const rejected = submissionList.filter((s) => s.status === "rejected").length
-    const success_rate = total > 0 ? Math.round((approved / total) * 100) : 0
-
-    setStats({ total, pending, approved, rejected, success_rate })
+  const handlePlayAudio = (submissionId: string) => {
+    if (currentlyPlaying === submissionId && isPlaying) {
+      setIsPlaying(false)
+    } else {
+      setCurrentlyPlaying(submissionId)
+      setIsPlaying(true)
+    }
   }
 
-  const handleDelete = async (submissionId: string) => {
-    if (!confirm("Are you sure you want to delete this submission? This action cannot be undone.")) {
-      return
-    }
+  const handleDeleteSubmission = async () => {
+    if (!submissionToDelete) return
 
     try {
-      const response = await fetch(`/api/submissions/${submissionId}`, {
-        method: "DELETE",
-      })
+      setDeleting(true)
+      setError("")
 
-      if (response.ok) {
-        setSubmissions(submissions.filter((s) => s.id !== submissionId))
-        calculateStats(submissions.filter((s) => s.id !== submissionId))
-      } else {
-        const errorData = await response.json()
-        alert(errorData.error || "Failed to delete submission")
+      // Find the submission
+      const submission = submissions.find((s) => s.id === submissionToDelete)
+
+      if (!submission) {
+        throw new Error("Submission not found")
       }
-    } catch (error) {
-      console.error("Delete error:", error)
-      alert("Network error. Please try again.")
+
+      // Check if submission is pending (only pending submissions can be deleted)
+      if (submission.status !== "pending") {
+        throw new Error("Only pending submissions can be deleted")
+      }
+
+      // Delete the submission
+      const { error: deleteError } = await supabase
+        .from("submissions")
+        .delete()
+        .eq("id", submissionToDelete)
+        .eq("user_id", user.id) // Safety check
+
+      if (deleteError) {
+        throw deleteError
+      }
+
+      // Refund credit if not pro tier
+      if (user.tier !== "pro") {
+        const { error: creditError } = await supabase
+          .from("users")
+          .update({ submission_credits: user.submission_credits + 1 })
+          .eq("id", user.id)
+
+        if (creditError) {
+          console.error("Error refunding credit:", creditError)
+          // Continue anyway, the submission is already deleted
+        }
+      }
+
+      // Delete the file from storage
+      // Extract the path from the URL
+      const fileUrl = submission.file_url
+      const storageUrl = supabase.storage.from("audio").getPublicUrl("").data.publicUrl
+      const filePath = fileUrl.replace(storageUrl, "")
+
+      if (filePath) {
+        const { error: storageError } = await supabase.storage.from("audio").remove([filePath])
+
+        if (storageError) {
+          console.error("Error deleting file:", storageError)
+          // Continue anyway, the submission record is already deleted
+        }
+      }
+
+      setSuccess("Submission deleted successfully")
+      setSubmissions(submissions.filter((s) => s.id !== submissionToDelete))
+
+      // Update stats
+      if (stats) {
+        setStats({
+          ...stats,
+          total: stats.total - 1,
+          pending: stats.pending - 1,
+        })
+      }
+
+      // Close modal
+      setDeleteModalOpen(false)
+      setSubmissionToDelete(null)
+    } catch (err: any) {
+      console.error("Error deleting submission:", err)
+      setError(err.message || "Failed to delete submission")
+    } finally {
+      setDeleting(false)
     }
   }
 
-  const handleDownload = (submission: Submission) => {
-    const link = document.createElement("a")
-    link.href = submission.file_url
-    link.download = `${submission.artist_name} - ${submission.title}.mp3`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+  const getStatusBadge = (status: string) => {
+    const variants = {
+      pending: "bg-yellow-500",
+      in_review: "bg-blue-500",
+      approved: "bg-green-500",
+      rejected: "bg-red-500",
+    }
+    return (
+      <Badge className={`${variants[status as keyof typeof variants]} text-white`}>{status.replace("_", " ")}</Badge>
+    )
   }
 
-  const filteredAndSortedSubmissions = submissions
-    .filter((submission) => {
-      const matchesSearch =
-        submission.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        submission.artist_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        submission.genre.toLowerCase().includes(searchTerm.toLowerCase())
+  const renderStarRating = (rating: number | null) => {
+    if (!rating) return null
 
-      const matchesStatus = statusFilter === "all" || submission.status === statusFilter
-
-      return matchesSearch && matchesStatus
-    })
-    .sort((a, b) => {
-      switch (sortBy) {
-        case "newest":
-          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        case "oldest":
-          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-        case "title":
-          return a.title.localeCompare(b.title)
-        case "artist":
-          return a.artist_name.localeCompare(b.artist_name)
-        case "status":
-          return a.status.localeCompare(b.status)
-        default:
-          return 0
-      }
-    })
-
-  if (loading) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+      <div className="flex items-center">
+        {[1, 2, 3, 4, 5].map((star) => (
+          <Star
+            key={star}
+            className={`h-4 w-4 ${star <= rating ? "text-yellow-400 fill-yellow-400" : "text-gray-600"}`}
+          />
+        ))}
+      </div>
+    )
+  }
+
+  if (loading && !user) {
+    return (
+      <div className="min-h-screen bg-gray-900 text-white p-6 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-4"></div>
-          <p className="text-white">Loading your submissions...</p>
+          <Loader2 className="h-8 w-8 animate-spin text-blue-500 mx-auto mb-4" />
+          <p className="text-xl">Loading your submissions...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
-      <div className="max-w-7xl mx-auto p-6">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-bold">My Submissions</h1>
-            <p className="text-gray-400">Track your music submissions and feedback</p>
+    <div className="min-h-screen bg-gray-900 text-white p-6">
+      <div className="max-w-7xl mx-auto">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold mb-2">Your Submissions</h1>
+          <p className="text-gray-400">Track and manage your music submissions</p>
+        </div>
+
+        {error && (
+          <Alert className="bg-red-900/50 border-red-700 mb-6">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription className="text-red-200">{error}</AlertDescription>
+          </Alert>
+        )}
+
+        {success && (
+          <Alert className="bg-green-900/50 border-green-700 mb-6">
+            <CheckCircle className="h-4 w-4" />
+            <AlertDescription className="text-green-200">{success}</AlertDescription>
+          </Alert>
+        )}
+
+        {/* Stats Dashboard */}
+        {stats && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+            <Card className="bg-gray-800 border-gray-700">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-gray-400">Total Submissions</CardTitle>
+                <Music className="h-4 w-4 text-blue-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-white">{stats.total}</div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gray-800 border-gray-700">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-gray-400">Pending</CardTitle>
+                <Clock className="h-4 w-4 text-yellow-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-white">{stats.pending}</div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gray-800 border-gray-700">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-gray-400">Approved</CardTitle>
+                <CheckCircle className="h-4 w-4 text-green-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-white">{stats.approved}</div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gray-800 border-gray-700">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-gray-400">Rejected</CardTitle>
+                <AlertCircle className="h-4 w-4 text-red-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-white">{stats.rejected}</div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gray-800 border-gray-700">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-gray-400">Success Rate</CardTitle>
+                <Star className="h-4 w-4 text-purple-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-white">
+                  {stats.success_rate ? `${stats.success_rate.toFixed(1)}%` : "N/A"}
+                </div>
+              </CardContent>
+            </Card>
           </div>
-          <Button
-            onClick={() => router.push("/submit")}
-            className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Submit New Track
-          </Button>
-        </div>
+        )}
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
-          <Card className="bg-gray-800 border-gray-700">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-gray-400 text-sm">Total</p>
-                  <p className="text-2xl font-bold text-white">{stats.total}</p>
-                </div>
-                <Music className="h-8 w-8 text-purple-400" />
-              </div>
-            </CardContent>
-          </Card>
+        {/* Filters and Actions */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
+          <div className="flex items-center space-x-2">
+            <Button onClick={() => router.push("/submit")} className="bg-blue-600 hover:bg-blue-700">
+              <Music className="h-4 w-4 mr-2" />
+              Submit New Track
+            </Button>
+            <Button
+              onClick={() => {
+                setStatusFilter("all")
+                setSearchQuery("")
+                setSortBy("created_at")
+                setSortOrder("desc")
+                setCurrentPage(1)
+                loadSubmissions(user.id)
+              }}
+              variant="outline"
+              className="border-gray-600 bg-transparent"
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh
+            </Button>
+          </div>
 
-          <Card className="bg-gray-800 border-gray-700">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-gray-400 text-sm">Pending</p>
-                  <p className="text-2xl font-bold text-yellow-400">{stats.pending}</p>
-                </div>
-                <Clock className="h-8 w-8 text-yellow-400" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gray-800 border-gray-700">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-gray-400 text-sm">Approved</p>
-                  <p className="text-2xl font-bold text-green-400">{stats.approved}</p>
-                </div>
-                <CheckCircle className="h-8 w-8 text-green-400" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gray-800 border-gray-700">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-gray-400 text-sm">Rejected</p>
-                  <p className="text-2xl font-bold text-red-400">{stats.rejected}</p>
-                </div>
-                <XCircle className="h-8 w-8 text-red-400" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gray-800 border-gray-700">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-gray-400 text-sm">Success Rate</p>
-                  <p className="text-2xl font-bold text-blue-400">{stats.success_rate}%</p>
-                </div>
-                <TrendingUp className="h-8 w-8 text-blue-400" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Filters */}
-        <Card className="bg-gray-800 border-gray-700 mb-6">
-          <CardContent className="p-4">
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="flex-1">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                  <Input
-                    placeholder="Search by title, artist, or genre..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 bg-gray-700 border-gray-600 text-white placeholder-gray-400"
-                  />
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-40 bg-gray-700 border-gray-600 text-white">
-                    <Filter className="h-4 w-4 mr-2" />
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-gray-700 border-gray-600">
-                    <SelectItem value="all" className="text-white hover:bg-gray-600">
-                      All Status
-                    </SelectItem>
-                    <SelectItem value="pending" className="text-white hover:bg-gray-600">
-                      Pending
-                    </SelectItem>
-                    <SelectItem value="approved" className="text-white hover:bg-gray-600">
-                      Approved
-                    </SelectItem>
-                    <SelectItem value="rejected" className="text-white hover:bg-gray-600">
-                      Rejected
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-
-                <Select value={sortBy} onValueChange={setSortBy}>
-                  <SelectTrigger className="w-40 bg-gray-700 border-gray-600 text-white">
-                    <ArrowUpDown className="h-4 w-4 mr-2" />
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-gray-700 border-gray-600">
-                    <SelectItem value="newest" className="text-white hover:bg-gray-600">
-                      Newest First
-                    </SelectItem>
-                    <SelectItem value="oldest" className="text-white hover:bg-gray-600">
-                      Oldest First
-                    </SelectItem>
-                    <SelectItem value="title" className="text-white hover:bg-gray-600">
-                      Title A-Z
-                    </SelectItem>
-                    <SelectItem value="artist" className="text-white hover:bg-gray-600">
-                      Artist A-Z
-                    </SelectItem>
-                    <SelectItem value="status" className="text-white hover:bg-gray-600">
-                      Status
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center space-x-2">
+              <Search className="h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Search submissions..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full md:w-64 bg-gray-800 border-gray-700 text-white"
+              />
             </div>
-          </CardContent>
-        </Card>
+
+            <Select
+              value={statusFilter}
+              onValueChange={(value) => {
+                setStatusFilter(value)
+                setCurrentPage(1)
+              }}
+            >
+              <SelectTrigger className="w-full md:w-40 bg-gray-800 border-gray-700 text-white">
+                <Filter className="h-4 w-4 mr-2" />
+                <SelectValue placeholder="Filter" />
+              </SelectTrigger>
+              <SelectContent className="bg-gray-800 border-gray-700">
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="in_review">In Review</SelectItem>
+                <SelectItem value="approved">Approved</SelectItem>
+                <SelectItem value="rejected">Rejected</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={sortBy}
+              onValueChange={(value) => {
+                setSortBy(value)
+                setCurrentPage(1)
+              }}
+            >
+              <SelectTrigger className="w-full md:w-40 bg-gray-800 border-gray-700 text-white">
+                {sortOrder === "asc" ? <SortAsc className="h-4 w-4 mr-2" /> : <SortDesc className="h-4 w-4 mr-2" />}
+                <SelectValue placeholder="Sort by" />
+              </SelectTrigger>
+              <SelectContent className="bg-gray-800 border-gray-700">
+                <SelectItem value="created_at">Date Submitted</SelectItem>
+                <SelectItem value="title">Title</SelectItem>
+                <SelectItem value="artist">Artist</SelectItem>
+                <SelectItem value="genre">Genre</SelectItem>
+                <SelectItem value="status">Status</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Button
+              onClick={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
+              variant="outline"
+              size="icon"
+              className="border-gray-600 bg-transparent"
+            >
+              {sortOrder === "asc" ? <SortAsc className="h-4 w-4" /> : <SortDesc className="h-4 w-4" />}
+            </Button>
+          </div>
+        </div>
 
         {/* Submissions List */}
-        {filteredAndSortedSubmissions.length === 0 ? (
-          <Card className="bg-gray-800 border-gray-700">
-            <CardContent className="p-12 text-center">
-              <Music className="h-16 w-16 text-gray-600 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-white mb-2">
-                {submissions.length === 0 ? "No submissions yet" : "No submissions match your filters"}
-              </h3>
-              <p className="text-gray-400 mb-6">
-                {submissions.length === 0
-                  ? "Submit your first track to get professional feedback and potential placement opportunities."
-                  : "Try adjusting your search or filter criteria."}
-              </p>
-              {submissions.length === 0 && (
-                <Button
-                  onClick={() => router.push("/submit")}
-                  className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Submit Your First Track
+        <div className="space-y-4">
+          {loading ? (
+            <div className="text-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-blue-500 mx-auto mb-4" />
+              <p className="text-gray-400">Loading submissions...</p>
+            </div>
+          ) : submissions.length === 0 ? (
+            <Card className="bg-gray-800 border-gray-700">
+              <CardContent className="p-6 text-center">
+                <Music className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-400">No submissions found</p>
+                <p className="text-sm text-gray-500 mt-2">
+                  {searchQuery || statusFilter !== "all"
+                    ? "Try adjusting your filters"
+                    : "Submit your first track to get started"}
+                </p>
+                <Button onClick={() => router.push("/submit")} className="mt-4 bg-blue-600 hover:bg-blue-700">
+                  Submit a Track
                 </Button>
-              )}
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="space-y-4">
-            {filteredAndSortedSubmissions.map((submission) => {
-              const StatusIcon = statusIcons[submission.status]
-              return (
-                <Card
-                  key={submission.id}
-                  className="bg-gray-800 border-gray-700 hover:border-gray-600 transition-colors"
-                >
-                  <CardContent className="p-6">
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <h3 className="text-xl font-semibold text-white">{submission.title}</h3>
-                          <Badge className={`${statusColors[submission.status]} border`}>
-                            <StatusIcon className="h-3 w-3 mr-1" />
-                            {submission.status.charAt(0).toUpperCase() + submission.status.slice(1)}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center gap-4 text-gray-400 text-sm mb-2">
-                          <span>by {submission.artist_name}</span>
-                          <span>•</span>
-                          <span>{submission.genre}</span>
-                          <span>•</span>
-                          <span className="flex items-center gap-1">
-                            <Calendar className="h-3 w-3" />
-                            {new Date(submission.created_at).toLocaleDateString()}
-                          </span>
-                        </div>
+              </CardContent>
+            </Card>
+          ) : (
+            submissions.map((submission) => (
+              <Card key={submission.id} className="bg-gray-800 border-gray-700">
+                <CardContent className="p-6">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex flex-wrap items-center gap-2 mb-3">
+                        <h3 className="text-lg font-semibold text-white">{submission.title}</h3>
+                        {getStatusBadge(submission.status)}
+                        {submission.rating && renderStarRating(submission.rating)}
+                      </div>
+                      <div className="text-gray-400 space-y-1">
+                        <p className="flex items-center">
+                          <Headphones className="h-4 w-4 mr-2" />
+                          Artist: {submission.artist}
+                        </p>
+                        <p className="flex items-center">
+                          <Music className="h-4 w-4 mr-2" />
+                          Genre: {submission.genre}
+                        </p>
                         {submission.mood_tags && submission.mood_tags.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mb-3">
+                          <div className="flex flex-wrap items-center gap-2 mt-2">
+                            <span className="text-sm text-gray-500">Mood:</span>
                             {submission.mood_tags.map((tag) => (
-                              <Badge key={tag} variant="outline" className="text-xs border-gray-600 text-gray-300">
+                              <Badge key={tag} className="bg-gray-700 text-gray-300 text-xs">
                                 {tag}
                               </Badge>
                             ))}
                           </div>
                         )}
-                        {submission.description && (
-                          <p className="text-gray-300 text-sm mb-3">{submission.description}</p>
-                        )}
+                        <p className="flex items-center">
+                          <Calendar className="h-4 w-4 mr-2" />
+                          Submitted: {formatRelativeTime(submission.created_at)}
+                        </p>
                       </div>
                     </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        onClick={() => handlePlayAudio(submission.id)}
+                        variant="outline"
+                        size="sm"
+                        className="border-gray-600 bg-transparent"
+                      >
+                        {currentlyPlaying === submission.id && isPlaying ? (
+                          <Pause className="h-4 w-4 mr-1" />
+                        ) : (
+                          <Play className="h-4 w-4 mr-1" />
+                        )}
+                        {currentlyPlaying === submission.id && isPlaying ? "Pause" : "Play"}
+                      </Button>
 
-                    {/* Audio Player */}
-                    <div className="mb-4">
-                      <WaveformPlayer
-                        audioUrl={submission.file_url}
-                        title={`${submission.artist_name} - ${submission.title}`}
-                      />
-                    </div>
+                      <Button
+                        onClick={() => window.open(submission.file_url, "_blank")}
+                        variant="outline"
+                        size="sm"
+                        className="border-gray-600 bg-transparent"
+                      >
+                        <Download className="h-4 w-4 mr-1" />
+                        Download
+                      </Button>
 
-                    {/* Actions */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex gap-2">
+                      {submission.feedback && (
                         <Button
-                          variant="outline"
+                          onClick={() => {
+                            setSelectedSubmission(submission)
+                            setFeedbackModalOpen(true)
+                          }}
                           size="sm"
-                          onClick={() => handleDownload(submission)}
-                          className="border-gray-600 text-white hover:bg-gray-700 bg-transparent"
+                          className="bg-blue-600 hover:bg-blue-700"
                         >
-                          <Download className="h-4 w-4 mr-1" />
-                          Download
+                          <MessageSquare className="h-4 w-4 mr-1" />
+                          Feedback
                         </Button>
-                        {submission.admin_feedback && (
-                          <Dialog open={feedbackDialogOpen} onOpenChange={setFeedbackDialogOpen}>
-                            <DialogTrigger asChild>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setSelectedSubmission(submission)}
-                                className="border-gray-600 text-white hover:bg-gray-700 bg-transparent"
-                              >
-                                <Eye className="h-4 w-4 mr-1" />
-                                View Feedback
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent className="bg-gray-800 border-gray-700 text-white max-w-2xl">
-                              <DialogHeader>
-                                <DialogTitle>Professional Feedback</DialogTitle>
-                                <DialogDescription className="text-gray-400">
-                                  {selectedSubmission?.title} by {selectedSubmission?.artist_name}
-                                </DialogDescription>
-                              </DialogHeader>
-                              {selectedSubmission?.admin_feedback && (
-                                <div className="space-y-4">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-gray-400">Rating:</span>
-                                    <div className="flex">
-                                      {[1, 2, 3, 4, 5].map((star) => (
-                                        <Star
-                                          key={star}
-                                          className={`h-4 w-4 ${
-                                            star <= selectedSubmission.admin_feedback!.rating
-                                              ? "text-yellow-400 fill-current"
-                                              : "text-gray-600"
-                                          }`}
-                                        />
-                                      ))}
-                                    </div>
-                                    <span className="text-white font-medium">
-                                      {selectedSubmission.admin_feedback.rating}/5
-                                    </span>
-                                  </div>
-                                  <div>
-                                    <h4 className="font-medium text-white mb-2">Comments:</h4>
-                                    <p className="text-gray-300 leading-relaxed">
-                                      {selectedSubmission.admin_feedback.comments}
-                                    </p>
-                                  </div>
-                                  <div className="text-sm text-gray-400 pt-2 border-t border-gray-700">
-                                    Reviewed by {selectedSubmission.admin_feedback.reviewer_name} on{" "}
-                                    {new Date(selectedSubmission.admin_feedback.reviewed_at).toLocaleDateString()}
-                                  </div>
-                                </div>
-                              )}
-                            </DialogContent>
-                          </Dialog>
-                        )}
-                        {submission.status === "pending" && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleDelete(submission.id)}
-                            className="border-red-600 text-red-400 hover:bg-red-900/20 bg-transparent"
-                          >
-                            <Trash2 className="h-4 w-4 mr-1" />
-                            Delete
-                          </Button>
-                        )}
-                      </div>
-                      <div className="text-sm text-gray-400">ID: {submission.id.slice(0, 8)}...</div>
+                      )}
+
+                      {submission.status === "pending" && (
+                        <Button
+                          onClick={() => {
+                            setSubmissionToDelete(submission.id)
+                            setDeleteModalOpen(true)
+                          }}
+                          variant="destructive"
+                          size="sm"
+                          className="bg-red-600 hover:bg-red-700"
+                        >
+                          <Trash2 className="h-4 w-4 mr-1" />
+                          Delete
+                        </Button>
+                      )}
                     </div>
-                  </CardContent>
-                </Card>
-              )
-            })}
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+
+        {/* Pagination */}
+        {!loading && submissions.length > 0 && (
+          <div className="flex items-center justify-between mt-6">
+            <div className="text-sm text-gray-400">
+              Showing {Math.min((currentPage - 1) * 10 + 1, submissions.length)} to{" "}
+              {Math.min(currentPage * 10, submissions.length)} of {totalPages * 10} submissions
+            </div>
+            <div className="flex items-center space-x-2">
+              <Button
+                onClick={() => {
+                  const newPage = Math.max(1, currentPage - 1)
+                  setCurrentPage(newPage)
+                  loadSubmissions(user.id)
+                }}
+                disabled={currentPage === 1}
+                variant="outline"
+                size="sm"
+                className="border-gray-600"
+              >
+                Previous
+              </Button>
+              <span className="text-sm text-gray-400">
+                Page {currentPage} of {totalPages}
+              </span>
+              <Button
+                onClick={() => {
+                  const newPage = Math.min(totalPages, currentPage + 1)
+                  setCurrentPage(newPage)
+                  loadSubmissions(user.id)
+                }}
+                disabled={currentPage === totalPages}
+                variant="outline"
+                size="sm"
+                className="border-gray-600"
+              >
+                Next
+              </Button>
+            </div>
           </div>
         )}
+
+        {/* Feedback Modal */}
+        <Dialog open={feedbackModalOpen} onOpenChange={setFeedbackModalOpen}>
+          <DialogContent className="bg-gray-800 border-gray-700 text-white">
+            <DialogHeader>
+              <DialogTitle>Feedback for "{selectedSubmission?.title}"</DialogTitle>
+              <DialogDescription className="text-gray-400">Review feedback from our team</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              {selectedSubmission?.rating && (
+                <div>
+                  <h4 className="text-sm font-medium text-gray-400 mb-1">Rating</h4>
+                  <div className="flex items-center">
+                    {renderStarRating(selectedSubmission.rating)}
+                    <span className="ml-2 text-white">{selectedSubmission.rating}/5</span>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <h4 className="text-sm font-medium text-gray-400 mb-1">Feedback</h4>
+                <div className="bg-gray-700 rounded-md p-4 text-white">
+                  {selectedSubmission?.feedback || "No detailed feedback provided."}
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <p className="text-sm text-gray-400 flex items-center">
+                  <Info className="h-4 w-4 mr-2" />
+                  Reviewed {selectedSubmission?.updated_at && formatRelativeTime(selectedSubmission.updated_at)}
+                </p>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Confirmation Modal */}
+        <Dialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
+          <DialogContent className="bg-gray-800 border-gray-700 text-white">
+            <DialogHeader>
+              <DialogTitle>Delete Submission</DialogTitle>
+              <DialogDescription className="text-gray-400">
+                Are you sure you want to delete this submission? This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <p className="text-white">
+                If you delete this submission, your credit will be refunded and you can submit another track.
+              </p>
+              <div className="flex justify-end space-x-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setDeleteModalOpen(false)
+                    setSubmissionToDelete(null)
+                  }}
+                  className="border-gray-600"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleDeleteSubmission}
+                  variant="destructive"
+                  className="bg-red-600 hover:bg-red-700"
+                  disabled={deleting}
+                >
+                  {deleting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Deleting...
+                    </>
+                  ) : (
+                    "Delete Submission"
+                  )}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   )

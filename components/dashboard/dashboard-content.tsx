@@ -43,8 +43,8 @@ interface Submission {
   status: "pending" | "in_review" | "approved" | "rejected"
   admin_rating?: number
   admin_feedback?: string
-  created_at: string
-  updated_at: string
+  submitted_at: string // Changed from created_at to submitted_at
+  updated_at?: string
 }
 
 interface UserActivity {
@@ -572,7 +572,7 @@ export function DashboardContent({ user }: DashboardContentProps) {
                         <Badge className={`${getStatusBadgeColor(submission.status)} text-white text-xs`}>
                           {submission.status.replace("_", " ")}
                         </Badge>
-                        <span className="text-gray-500 text-xs">{formatRelativeTime(submission.created_at)}</span>
+                        <span className="text-gray-500 text-xs">{formatRelativeTime(submission.submitted_at)}</span>
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
