@@ -7,13 +7,32 @@ import { Play, ArrowRight, Music, Award, Star } from "lucide-react"
 import Link from "next/link"
 import { YouTubeEmbed } from "./youtube-embed"
 
-// Mock auth hook
+// Prevent Web3/MetaMask injection errors
+if (typeof window !== "undefined") {
+  window.addEventListener("unhandledrejection", (event) => {
+    if (
+      event.reason?.message?.includes("MetaMask") ||
+      event.reason?.message?.includes("Web3") ||
+      event.reason?.message?.includes("ethereum")
+    ) {
+      event.preventDefault()
+      console.warn("Prevented Web3/MetaMask error:", event.reason)
+    }
+  })
+}
+
+// Mock auth hook with error handling
 const useAuth = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
 
   useEffect(() => {
-    const session = localStorage.getItem("user-session")
-    setIsLoggedIn(!!session)
+    try {
+      const session = localStorage.getItem("user-session")
+      setIsLoggedIn(!!session)
+    } catch (error) {
+      console.warn("localStorage access failed:", error)
+      setIsLoggedIn(false)
+    }
   }, [])
 
   return { isLoggedIn }
@@ -23,11 +42,17 @@ export function HomePage() {
   const { isLoggedIn } = useAuth()
 
   const handleSubmitMusic = () => {
-    if (!isLoggedIn) {
-      window.location.href = "/signup"
-      return
+    try {
+      if (!isLoggedIn) {
+        window.location.href = "/signup"
+        return
+      }
+      window.location.href = "/dashboard"
+    } catch (error) {
+      console.warn("Navigation error:", error)
+      // Fallback navigation
+      document.location.href = "/signup"
     }
-    window.location.href = "/dashboard"
   }
 
   const hosts = [

@@ -1,991 +1,1172 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Badge } from "@/components/ui/badge"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
-  Play,
-  Pause,
-  Download,
-  Star,
-  Search,
   Users,
   Music,
-  CheckCircle,
-  Clock,
-  Shield,
-  Youtube,
-  Plus,
-  Trash2,
-  Eye,
-  Crown,
-  Settings,
   TrendingUp,
-  Award,
+  Clock,
+  CheckCircle,
+  AlertCircle,
+  Search,
+  Play,
+  Star,
+  MessageSquare,
+  Settings,
+  Shield,
   Upload,
+  Youtube,
+  Edit,
+  Eye,
+  RefreshCw,
+  Home,
+  Trash2,
+  Download,
+  BarChart3,
+  Activity,
+  Database,
+  Server,
+  Zap,
+  Crown,
+  UserCheck,
+  UserX,
+  Mail,
+  Calendar,
+  FileText,
+  Headphones,
+  Pause,
+  CreditCard,
 } from "lucide-react"
-import type { User } from "@/lib/supabase/auth"
+import { useRouter } from "next/navigation"
+import { formatRelativeTime, formatDuration } from "@/lib/utils"
 
-interface AdminPortalProps {
-  user: User
+interface User {
+  id: string
+  email: string
+  name: string
+  tier: string
+  role: string
+  submission_credits: number
+  is_verified: boolean
+  created_at: string
+  updated_at: string
 }
 
 interface Submission {
   id: string
-  title: string
-  artist: string
-  email: string
-  tier: string
-  submittedAt: string
-  status: "pending" | "reviewing" | "approved" | "rejected"
-  rating?: number
-  reviewedBy?: string
-  notes?: string
-  mood?: string
-  playUrl?: string
+  status: string
+  created_at: string
+  updated_at: string
+  users: { name: string; email: string }
+  tracks: { title: string; artist: string; duration: number; file_url: string }
 }
 
-interface AdminUser {
+interface Stats {
+  submissions: {
+    total: number
+    pending: number
+    approved: number
+    rejected: number
+    in_review: number
+  }
+  users: {
+    total: number
+    creator: number
+    indie: number
+    pro: number
+    admins: number
+  }
+  activity: {
+    recentSubmissions: number
+    recentUsers: number
+  }
+}
+
+interface Media {
   id: string
-  name: string
-  email: string
-  role: string
-  grantedAt: string
-  grantedBy: string
+  title: string
+  description: string
+  media_type: string
+  youtube_url?: string
+  file_url?: string
+  thumbnail_url?: string
+  is_public: boolean
+  created_at: string
 }
 
-export function AdminPortal({ user }: AdminPortalProps) {
-  const [activeTab, setActiveTab] = useState("dashboard")
+export function AdminPortal({ user }: { user: any }) {
+  const [stats, setStats] = useState<Stats | null>(null)
   const [submissions, setSubmissions] = useState<Submission[]>([])
-  const [admins, setAdmins] = useState<AdminUser[]>([])
-  const [filter, setFilter] = useState<"all" | "ranked" | "unranked" | "my-ranked">("unranked")
-  const [searchTerm, setSearchTerm] = useState("")
-  const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null)
-  const [isPlaying, setIsPlaying] = useState<string | null>(null)
-  const [newAdminEmail, setNewAdminEmail] = useState("")
-  const [newAdminRole, setNewAdminRole] = useState("admin")
+  const [users, setUsers] = useState<User[]>([])
+  const [media, setMedia] = useState<Media[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
+  const [success, setSuccess] = useState("")
+  const router = useRouter()
+
+  // Filters and search
+  const [submissionFilter, setSubmissionFilter] = useState("all")
+  const [submissionSearch, setSubmissionSearch] = useState("")
+  const [userFilter, setUserFilter] = useState("all")
+  const [userSearch, setUserSearch] = useState("")
+  const [currentPage, setCurrentPage] = useState(1)
+
+  // Review modal state
+  const [reviewingSubmission, setReviewingSubmission] = useState<Submission | null>(null)
+  const [reviewFeedback, setReviewFeedback] = useState("")
+  const [reviewRating, setReviewRating] = useState(0)
+  const [reviewStatus, setReviewStatus] = useState("")
+  const [reviewTags, setReviewTags] = useState<string[]>([])
+
+  // Media management
   const [youtubeUrl, setYoutubeUrl] = useState("")
-  const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState("")
+  const [mediaTitle, setMediaTitle] = useState("")
+  const [mediaDescription, setMediaDescription] = useState("")
+  const [uploadingMedia, setUploadingMedia] = useState(false)
 
-  // Mock data - replace with actual API calls
+  // User editing
+  const [editingUser, setEditingUser] = useState<User | null>(null)
+  const [editUserTier, setEditUserTier] = useState("")
+  const [editUserRole, setEditUserRole] = useState("")
+  const [editUserCredits, setEditUserCredits] = useState(0)
+  const [editUserVerified, setEditUserVerified] = useState(false)
+
+  // Audio player state
+  const [currentlyPlaying, setCurrentlyPlaying] = useState<string | null>(null)
+  const [isPlaying, setIsPlaying] = useState(false)
+
   useEffect(() => {
-    // Mock submissions data
-    setSubmissions([
-      {
-        id: "1",
-        title: "Summer Vibes",
-        artist: "DJ Producer",
-        email: "producer@example.com",
-        tier: "pro",
-        submittedAt: "2024-01-20T10:30:00Z",
-        status: "pending",
-        playUrl: "/placeholder-audio.mp3",
-      },
-      {
-        id: "2",
-        title: "Night Drive",
-        artist: "Beat Maker",
-        email: "beats@example.com",
-        tier: "creator",
-        submittedAt: "2024-01-19T15:45:00Z",
-        status: "approved",
-        rating: 4,
-        reviewedBy: user.email,
-        notes: "Great production quality",
-        mood: "chill",
-      },
-      {
-        id: "3",
-        title: "Energy Boost",
-        artist: "Electronic Artist",
-        email: "electronic@example.com",
-        tier: "free",
-        submittedAt: "2024-01-18T09:15:00Z",
-        status: "reviewing",
-        rating: 3,
-        reviewedBy: "admin@example.com",
-        mood: "energetic",
-      },
-    ])
+    loadData()
+  }, [submissionFilter, submissionSearch, userFilter, userSearch, currentPage])
 
-    // Mock admin users data
-    setAdmins([
-      {
-        id: "1",
-        name: "Darion Harris",
-        email: "2668harris@gmail.com",
-        role: "master_dev",
-        grantedAt: "2024-01-01T00:00:00Z",
-        grantedBy: "System",
-      },
-      {
-        id: "2",
-        name: "IPXS Dev",
-        email: "ipxsdev@gmail.com",
-        role: "master_dev",
-        grantedAt: "2024-01-01T00:00:00Z",
-        grantedBy: "System",
-      },
-    ])
-  }, [user.email])
+  const loadData = async () => {
+    try {
+      setLoading(true)
+      setError("")
 
-  const filteredSubmissions = submissions.filter((submission) => {
-    const matchesSearch =
-      submission.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      submission.artist.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      submission.email.toLowerCase().includes(searchTerm.toLowerCase())
+      // Load stats
+      const statsRes = await fetch("/api/admin/stats")
+      if (statsRes.ok) {
+        const statsData = await statsRes.json()
+        setStats(statsData)
+      } else {
+        console.error("Failed to load stats:", await statsRes.text())
+      }
 
-    if (!matchesSearch) return false
+      // Load submissions
+      const submissionsRes = await fetch(
+        `/api/admin/submissions?status=${submissionFilter}&search=${encodeURIComponent(submissionSearch)}&page=${currentPage}&limit=10`,
+      )
+      if (submissionsRes.ok) {
+        const submissionsData = await submissionsRes.json()
+        setSubmissions(submissionsData.submissions || [])
+      } else {
+        console.error("Failed to load submissions:", await submissionsRes.text())
+      }
 
-    switch (filter) {
-      case "ranked":
-        return submission.rating !== undefined
-      case "unranked":
-        return submission.rating === undefined
-      case "my-ranked":
-        return submission.reviewedBy === user.email
-      default:
-        return true
-    }
-  })
+      // Load users
+      const usersRes = await fetch(
+        `/api/admin/users?role=${userFilter}&search=${encodeURIComponent(userSearch)}&page=${currentPage}&limit=10`,
+      )
+      if (usersRes.ok) {
+        const usersData = await usersRes.json()
+        setUsers(usersData.users || [])
+      } else {
+        console.error("Failed to load users:", await usersRes.text())
+      }
 
-  const handlePlayPause = (submissionId: string) => {
-    if (isPlaying === submissionId) {
-      setIsPlaying(null)
-    } else {
-      setIsPlaying(submissionId)
+      // Load media
+      const mediaRes = await fetch("/api/admin/media")
+      if (mediaRes.ok) {
+        const mediaData = await mediaRes.json()
+        setMedia(mediaData.media || [])
+      } else {
+        console.error("Failed to load media:", await mediaRes.text())
+      }
+    } catch (err) {
+      console.error("Error loading admin data:", err)
+      setError("Failed to load admin data")
+    } finally {
+      setLoading(false)
     }
   }
 
-  const handleReview = (submission: Submission) => {
-    setSelectedSubmission(submission)
-  }
+  const handleReviewSubmission = async () => {
+    if (!reviewingSubmission || !reviewStatus) return
 
-  const handleSaveReview = async () => {
-    if (!selectedSubmission) return
+    try {
+      setLoading(true)
+      const response = await fetch(`/api/admin/submissions/${reviewingSubmission.id}/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: reviewStatus,
+          feedback: reviewFeedback,
+          rating: reviewRating || null,
+          tags: reviewTags,
+        }),
+      })
 
-    setLoading(true)
-    // Here you would save the review to your backend
-    await new Promise((resolve) => setTimeout(resolve, 1000)) // Mock API call
-
-    setSubmissions((prev) => prev.map((sub) => (sub.id === selectedSubmission.id ? selectedSubmission : sub)))
-
-    setSelectedSubmission(null)
-    setLoading(false)
-    setMessage("Review saved successfully!")
-    setTimeout(() => setMessage(""), 3000)
-  }
-
-  const handleGrantAdmin = async () => {
-    if (!newAdminEmail || !newAdminRole) return
-
-    setLoading(true)
-    // Here you would grant admin privileges via your backend
-    await new Promise((resolve) => setTimeout(resolve, 1000)) // Mock API call
-
-    const newAdmin: AdminUser = {
-      id: Date.now().toString(),
-      name: newAdminEmail.split("@")[0],
-      email: newAdminEmail,
-      role: newAdminRole,
-      grantedAt: new Date().toISOString(),
-      grantedBy: user.email,
+      if (response.ok) {
+        setSuccess("Review submitted successfully")
+        setReviewingSubmission(null)
+        setReviewFeedback("")
+        setReviewRating(0)
+        setReviewStatus("")
+        setReviewTags([])
+        loadData()
+      } else {
+        const errorData = await response.json()
+        setError(errorData.error || "Failed to submit review")
+      }
+    } catch (err) {
+      setError("Error submitting review")
+    } finally {
+      setLoading(false)
     }
-
-    setAdmins((prev) => [...prev, newAdmin])
-    setNewAdminEmail("")
-    setNewAdminRole("admin")
-    setLoading(false)
-    setMessage("Admin privileges granted successfully!")
-    setTimeout(() => setMessage(""), 3000)
   }
 
-  const handleRevokeAdmin = async (adminId: string, adminEmail: string) => {
-    // Protect Master Dev accounts
-    if (adminEmail === "2668harris@gmail.com" || adminEmail === "ipxsdev@gmail.com") {
-      setMessage("Cannot revoke Master Developer privileges!")
-      setTimeout(() => setMessage(""), 3000)
+  const handleSyncYouTube = async () => {
+    if (!youtubeUrl || !mediaTitle) {
+      setError("YouTube URL and title are required")
       return
     }
 
-    setLoading(true)
-    // Here you would revoke admin privileges via your backend
-    await new Promise((resolve) => setTimeout(resolve, 1000)) // Mock API call
+    try {
+      setUploadingMedia(true)
+      const response = await fetch("/api/admin/media/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          youtube_url: youtubeUrl,
+          title: mediaTitle,
+          description: mediaDescription,
+        }),
+      })
 
-    setAdmins((prev) => prev.filter((admin) => admin.id !== adminId))
-    setLoading(false)
-    setMessage("Admin privileges revoked successfully!")
-    setTimeout(() => setMessage(""), 3000)
-  }
-
-  const handleMediaUpdate = async () => {
-    setLoading(true)
-    // Here you would sync with YouTube API
-    await new Promise((resolve) => setTimeout(resolve, 2000)) // Mock API call
-    setLoading(false)
-    setMessage("Media updated successfully!")
-    setTimeout(() => setMessage(""), 3000)
-  }
-
-  const handleManualVideoAdd = async () => {
-    if (!youtubeUrl) return
-
-    setLoading(true)
-    // Here you would add the video manually
-    await new Promise((resolve) => setTimeout(resolve, 1000)) // Mock API call
-    setYoutubeUrl("")
-    setLoading(false)
-    setMessage("Video added successfully!")
-    setTimeout(() => setMessage(""), 3000)
-  }
-
-  const getTierBadgeColor = (tier: string) => {
-    switch (tier) {
-      case "pro":
-        return "bg-gradient-to-r from-purple-500 to-pink-500"
-      case "creator":
-        return "bg-gradient-to-r from-blue-500 to-cyan-500"
-      case "free":
-        return "bg-gradient-to-r from-gray-500 to-gray-600"
-      default:
-        return "bg-gradient-to-r from-gray-500 to-gray-600"
+      if (response.ok) {
+        setSuccess("YouTube video synced successfully")
+        setYoutubeUrl("")
+        setMediaTitle("")
+        setMediaDescription("")
+        loadData()
+      } else {
+        const errorData = await response.json()
+        setError(errorData.error || "Failed to sync YouTube video")
+      }
+    } catch (err) {
+      setError("Error syncing YouTube video")
+    } finally {
+      setUploadingMedia(false)
     }
   }
 
-  const getStatusBadgeColor = (status: string) => {
-    switch (status) {
-      case "approved":
-        return "bg-gradient-to-r from-green-500 to-emerald-500"
-      case "rejected":
-        return "bg-gradient-to-r from-red-500 to-rose-500"
-      case "reviewing":
-        return "bg-gradient-to-r from-yellow-500 to-orange-500"
-      default:
-        return "bg-gradient-to-r from-gray-500 to-gray-600"
+  const handleEditUser = async () => {
+    if (!editingUser) return
+
+    try {
+      setLoading(true)
+      const response = await fetch(`/api/admin/users/${editingUser.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tier: editUserTier,
+          role: editUserRole,
+          submission_credits: editUserCredits,
+          is_verified: editUserVerified,
+        }),
+      })
+
+      if (response.ok) {
+        setSuccess("User updated successfully")
+        setEditingUser(null)
+        loadData()
+      } else {
+        const errorData = await response.json()
+        setError(errorData.error || "Failed to update user")
+      }
+    } catch (err) {
+      setError("Error updating user")
+    } finally {
+      setLoading(false)
     }
   }
 
-  const stats = {
-    totalSubmissions: submissions.length,
-    pendingReviews: submissions.filter((s) => s.status === "pending").length,
-    approvedTracks: submissions.filter((s) => s.status === "approved").length,
-    activeAdmins: admins.length,
+  const handleDeleteUser = async (userId: string) => {
+    if (!confirm("Are you sure you want to delete this user? This action cannot be undone.")) {
+      return
+    }
+
+    try {
+      setLoading(true)
+      const response = await fetch(`/api/admin/users/${userId}`, {
+        method: "DELETE",
+      })
+
+      if (response.ok) {
+        setSuccess("User deleted successfully")
+        loadData()
+      } else {
+        const errorData = await response.json()
+        setError(errorData.error || "Failed to delete user")
+      }
+    } catch (err) {
+      setError("Error deleting user")
+    } finally {
+      setLoading(false)
+    }
   }
 
-  return (
-    <div className="min-h-screen bg-black text-white">
-      {/* Master Developer Quick Actions Panel */}
-      {user.role === "master_dev" && (
-        <div className="border-2 border-yellow-600/50 bg-gradient-to-r from-yellow-900/20 to-orange-900/20 backdrop-blur-sm mx-4 mt-4 rounded-xl">
-          <div className="p-6">
-            <div className="flex items-center mb-4">
-              <Crown className="h-6 w-6 text-yellow-400 mr-3" />
-              <h2 className="text-xl font-bold text-yellow-400">Master Developer Quick Actions</h2>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Button
-                onClick={() => setActiveTab("admin-portal")}
-                className="h-14 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold rounded-xl border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
-              >
-                <Shield className="h-5 w-5 mr-3" />
-                Admin Portal
-              </Button>
-              <Button
-                onClick={() => setActiveTab("dev-tools")}
-                className="h-14 bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-700 hover:to-rose-700 text-white font-semibold rounded-xl border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
-              >
-                <Crown className="h-5 w-5 mr-3" />
-                Dev Tools
-              </Button>
-              <Button
-                onClick={() => setActiveTab("master-settings")}
-                className="h-14 bg-gradient-to-r from-gray-100 to-white hover:from-gray-200 hover:to-gray-100 text-gray-900 font-semibold rounded-xl border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
-              >
-                <Settings className="h-5 w-5 mr-3 text-yellow-600" />
-                Master Settings
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+  const handlePlayAudio = (url: string, submissionId: string) => {
+    if (currentlyPlaying === submissionId && isPlaying) {
+      setIsPlaying(false)
+      setCurrentlyPlaying(null)
+    } else {
+      setCurrentlyPlaying(submissionId)
+      setIsPlaying(true)
+      // In a real implementation, you would integrate with an audio player
+    }
+  }
 
-      {/* Header */}
-      <div className="border-b border-gray-800 bg-gray-900/95 backdrop-blur supports-[backdrop-filter]:bg-gray-900/60 mt-4">
-        <div className="container mx-auto px-4 py-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-                Admin Portal
-              </h1>
-              <p className="text-gray-400 mt-2">
-                Welcome back, {user.name} • {user.role === "master_dev" ? "Master Developer" : "Admin"}
-              </p>
-            </div>
-            <div className="flex items-center space-x-3">
-              <div className="flex items-center space-x-2 px-3 py-2 bg-gradient-to-r from-blue-600/20 to-purple-600/20 rounded-lg border border-blue-500/30">
-                <Shield className="h-5 w-5 text-blue-400" />
-                <Badge className="bg-gradient-to-r from-blue-600 to-purple-600 text-white border-0">
-                  {user.role === "master_dev" ? "Master Dev" : "Admin"}
-                </Badge>
-              </div>
-            </div>
+  const getStatusBadge = (status: string) => {
+    const variants = {
+      pending: "bg-yellow-500",
+      in_review: "bg-blue-500",
+      approved: "bg-green-500",
+      rejected: "bg-red-500",
+    }
+    return (
+      <Badge className={`${variants[status as keyof typeof variants]} text-white`}>{status.replace("_", " ")}</Badge>
+    )
+  }
+
+  const getTierBadge = (tier: string) => {
+    const variants = {
+      creator: "bg-gray-500",
+      indie: "bg-blue-500",
+      pro: "bg-gradient-to-r from-purple-500 to-pink-500",
+    }
+    return <Badge className={`${variants[tier as keyof typeof variants]} text-white`}>{tier.toUpperCase()}</Badge>
+  }
+
+  const getRoleBadge = (role: string) => {
+    const variants = {
+      user: "bg-gray-500",
+      admin: "bg-orange-500",
+      master_dev: "bg-red-500",
+    }
+    return (
+      <Badge className={`${variants[role as keyof typeof variants]} text-white`}>
+        {role === "master_dev" ? "MASTER DEV" : role.toUpperCase()}
+      </Badge>
+    )
+  }
+
+  const clearMessages = () => {
+    setError("")
+    setSuccess("")
+  }
+
+  if (loading && !stats) {
+    return (
+      <div className="min-h-screen bg-gray-900 text-white p-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex items-center justify-center py-12">
+            <RefreshCw className="h-8 w-8 animate-spin text-blue-500 mr-3" />
+            <span className="text-xl">Loading Admin Portal...</span>
           </div>
         </div>
       </div>
+    )
+  }
 
-      {/* Message Alert */}
-      {message && (
-        <div className="container mx-auto px-4 pt-4">
-          <Alert className="bg-gradient-to-r from-green-900/50 to-emerald-900/50 border-green-500/50 backdrop-blur-sm">
-            <CheckCircle className="h-4 w-4 text-green-400" />
-            <AlertDescription className="text-green-200">{message}</AlertDescription>
-          </Alert>
+  return (
+    <div className="min-h-screen bg-gray-900 text-white p-6">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold mb-2">Admin Portal</h1>
+              <p className="text-gray-400">
+                Welcome back, {user.name} • {user.role === "master_dev" ? "Master Developer" : "Administrator"}
+              </p>
+            </div>
+            <div className="flex items-center space-x-4">
+              <Button
+                onClick={() => router.push("/dashboard")}
+                variant="outline"
+                className="border-gray-600 text-white"
+              >
+                <Home className="h-4 w-4 mr-2" />
+                Dashboard
+              </Button>
+              <Button onClick={loadData} className="bg-blue-600 hover:bg-blue-700">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh Data
+              </Button>
+            </div>
+          </div>
         </div>
-      )}
 
-      <div className="container mx-auto px-4 py-6">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 bg-gray-800/50 backdrop-blur-sm border border-gray-700/50 rounded-xl">
-            <TabsTrigger
-              value="dashboard"
-              className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-600 data-[state=active]:to-purple-600 data-[state=active]:text-white rounded-lg"
-            >
-              <TrendingUp className="h-4 w-4 mr-2" />
-              Dashboard
-            </TabsTrigger>
-            <TabsTrigger
-              value="submissions"
-              className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-600 data-[state=active]:to-purple-600 data-[state=active]:text-white rounded-lg"
-            >
+        {/* Alerts */}
+        {error && (
+          <Alert className="bg-red-900/50 border-red-700 mb-6">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription className="text-red-200 flex items-center justify-between">
+              {error}
+              <Button onClick={clearMessages} variant="ghost" size="sm" className="text-red-200 hover:text-red-100">
+                ×
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {success && (
+          <Alert className="bg-green-900/50 border-green-700 mb-6">
+            <CheckCircle className="h-4 w-4" />
+            <AlertDescription className="text-green-200 flex items-center justify-between">
+              {success}
+              <Button onClick={clearMessages} variant="ghost" size="sm" className="text-green-200 hover:text-green-100">
+                ×
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Stats Dashboard */}
+        {stats && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <Card className="bg-gray-800 border-gray-700">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-gray-400">Total Submissions</CardTitle>
+                <Music className="h-4 w-4 text-blue-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-white">{stats.submissions?.total || 0}</div>
+                <div className="flex items-center space-x-2 text-xs text-gray-400 mt-2">
+                  <span className="text-yellow-400">{stats.submissions?.pending || 0} pending</span>
+                  <span>•</span>
+                  <span className="text-green-400">{stats.submissions?.approved || 0} approved</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gray-800 border-gray-700">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-gray-400">Total Users</CardTitle>
+                <Users className="h-4 w-4 text-green-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-white">{stats.users?.total || 0}</div>
+                <div className="flex items-center space-x-2 text-xs text-gray-400 mt-2">
+                  <span className="text-blue-400">{(stats.users?.indie || 0) + (stats.users?.pro || 0)} paid</span>
+                  <span>•</span>
+                  <span className="text-gray-400">{stats.users?.creator || 0} free</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gray-800 border-gray-700">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-gray-400">Recent Activity</CardTitle>
+                <TrendingUp className="h-4 w-4 text-purple-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-white">{stats.activity?.recentSubmissions || 0}</div>
+                <div className="text-xs text-gray-400 mt-2">Submissions (30 days)</div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gray-800 border-gray-700">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-gray-400">Review Queue</CardTitle>
+                <Clock className="h-4 w-4 text-orange-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-white">
+                  {(stats.submissions?.pending || 0) + (stats.submissions?.in_review || 0)}
+                </div>
+                <div className="text-xs text-gray-400 mt-2">Awaiting review</div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Main Content Tabs */}
+        <Tabs defaultValue="submissions" className="space-y-6">
+          <TabsList className="bg-gray-800 border-gray-700">
+            <TabsTrigger value="submissions" className="data-[state=active]:bg-gray-700">
               <Music className="h-4 w-4 mr-2" />
               Submissions
             </TabsTrigger>
-            <TabsTrigger
-              value="media"
-              className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-600 data-[state=active]:to-purple-600 data-[state=active]:text-white rounded-lg"
-            >
+            <TabsTrigger value="users" className="data-[state=active]:bg-gray-700">
+              <Users className="h-4 w-4 mr-2" />
+              Users
+            </TabsTrigger>
+            <TabsTrigger value="media" className="data-[state=active]:bg-gray-700">
               <Youtube className="h-4 w-4 mr-2" />
               Media
             </TabsTrigger>
+            <TabsTrigger value="analytics" className="data-[state=active]:bg-gray-700">
+              <BarChart3 className="h-4 w-4 mr-2" />
+              Analytics
+            </TabsTrigger>
             {user.role === "master_dev" && (
-              <TabsTrigger
-                value="privileges"
-                className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-600 data-[state=active]:to-purple-600 data-[state=active]:text-white rounded-lg"
-              >
+              <TabsTrigger value="system" className="data-[state=active]:bg-gray-700">
                 <Shield className="h-4 w-4 mr-2" />
-                Privileges
+                System
               </TabsTrigger>
             )}
           </TabsList>
 
-          {/* Dashboard Tab */}
-          <TabsContent value="dashboard" className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <Card className="bg-gradient-to-br from-gray-800/80 to-gray-900/80 border-gray-700/50 backdrop-blur-sm hover:shadow-lg hover:shadow-blue-500/10 transition-all duration-300">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-gray-200">Total Submissions</CardTitle>
-                  <div className="p-2 bg-gradient-to-r from-blue-600/20 to-purple-600/20 rounded-lg">
-                    <Music className="h-4 w-4 text-blue-400" />
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-white">{stats.totalSubmissions}</div>
-                  <p className="text-xs text-gray-400">All time submissions</p>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-gradient-to-br from-gray-800/80 to-gray-900/80 border-gray-700/50 backdrop-blur-sm hover:shadow-lg hover:shadow-yellow-500/10 transition-all duration-300">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-gray-200">Pending Reviews</CardTitle>
-                  <div className="p-2 bg-gradient-to-r from-yellow-600/20 to-orange-600/20 rounded-lg">
-                    <Clock className="h-4 w-4 text-yellow-400" />
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-white">{stats.pendingReviews}</div>
-                  <p className="text-xs text-gray-400">Awaiting review</p>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-gradient-to-br from-gray-800/80 to-gray-900/80 border-gray-700/50 backdrop-blur-sm hover:shadow-lg hover:shadow-green-500/10 transition-all duration-300">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-gray-200">Approved Tracks</CardTitle>
-                  <div className="p-2 bg-gradient-to-r from-green-600/20 to-emerald-600/20 rounded-lg">
-                    <CheckCircle className="h-4 w-4 text-green-400" />
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-white">{stats.approvedTracks}</div>
-                  <p className="text-xs text-gray-400">Successfully approved</p>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-gradient-to-br from-gray-800/80 to-gray-900/80 border-gray-700/50 backdrop-blur-sm hover:shadow-lg hover:shadow-purple-500/10 transition-all duration-300">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-gray-200">Active Admins</CardTitle>
-                  <div className="p-2 bg-gradient-to-r from-purple-600/20 to-pink-600/20 rounded-lg">
-                    <Users className="h-4 w-4 text-purple-400" />
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-white">{stats.activeAdmins}</div>
-                  <p className="text-xs text-gray-400">Admin users</p>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Recent Activity */}
-            <Card className="bg-gradient-to-br from-gray-800/80 to-gray-900/80 border-gray-700/50 backdrop-blur-sm">
-              <CardHeader>
-                <CardTitle className="text-white flex items-center">
-                  <Award className="h-5 w-5 mr-2 text-yellow-400" />
-                  Recent Activity
-                </CardTitle>
-                <CardDescription className="text-gray-400">Latest submissions and reviews</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {submissions.slice(0, 5).map((submission) => (
-                    <div
-                      key={submission.id}
-                      className="flex items-center justify-between p-4 bg-gradient-to-r from-gray-700/30 to-gray-800/30 rounded-xl border border-gray-600/30 hover:border-gray-500/50 transition-all duration-300"
-                    >
-                      <div className="flex items-center space-x-4">
-                        <div className="w-12 h-12 bg-gradient-to-br from-purple-500 via-pink-500 to-cyan-500 rounded-xl flex items-center justify-center shadow-lg">
-                          <Music className="h-6 w-6 text-white" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-white">{submission.title}</p>
-                          <p className="text-sm text-gray-400">by {submission.artist}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-3">
-                        <Badge className={getTierBadgeColor(submission.tier) + " text-white border-0"}>
-                          {submission.tier}
-                        </Badge>
-                        <Badge className={getStatusBadgeColor(submission.status) + " text-white border-0"}>
-                          {submission.status}
-                        </Badge>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
           {/* Submissions Tab */}
           <TabsContent value="submissions" className="space-y-6">
-            {/* Filters and Search */}
-            <Card className="bg-gradient-to-br from-gray-800/80 to-gray-900/80 border-gray-700/50 backdrop-blur-sm">
-              <CardContent className="pt-6">
-                <div className="flex flex-col md:flex-row gap-4">
-                  <div className="flex-1">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                      <Input
-                        placeholder="Search submissions..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="pl-10 bg-gray-700/50 border-gray-600/50 text-white backdrop-blur-sm"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant={filter === "all" ? "default" : "outline"}
-                      onClick={() => setFilter("all")}
-                      className={
-                        filter === "all"
-                          ? "bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 border-0"
-                          : "border-gray-600/50 hover:bg-gray-700/50 bg-transparent"
-                      }
-                    >
-                      All
-                    </Button>
-                    <Button
-                      variant={filter === "unranked" ? "default" : "outline"}
-                      onClick={() => setFilter("unranked")}
-                      className={
-                        filter === "unranked"
-                          ? "bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 border-0"
-                          : "border-gray-600/50 hover:bg-gray-700/50 bg-transparent"
-                      }
-                    >
-                      Unranked
-                    </Button>
-                    <Button
-                      variant={filter === "ranked" ? "default" : "outline"}
-                      onClick={() => setFilter("ranked")}
-                      className={
-                        filter === "ranked"
-                          ? "bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 border-0"
-                          : "border-gray-600/50 hover:bg-gray-700/50 bg-transparent"
-                      }
-                    >
-                      Ranked
-                    </Button>
-                    <Button
-                      variant={filter === "my-ranked" ? "default" : "outline"}
-                      onClick={() => setFilter("my-ranked")}
-                      className={
-                        filter === "my-ranked"
-                          ? "bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 border-0"
-                          : "border-gray-600/50 hover:bg-gray-700/50 bg-transparent"
-                      }
-                    >
-                      My Ranked
-                    </Button>
-                  </div>
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold">Submission Management</h2>
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-2">
+                  <Search className="h-4 w-4 text-gray-400" />
+                  <Input
+                    placeholder="Search submissions..."
+                    value={submissionSearch}
+                    onChange={(e) => setSubmissionSearch(e.target.value)}
+                    className="w-64 bg-gray-800 border-gray-700 text-white"
+                  />
                 </div>
-              </CardContent>
-            </Card>
-
-            {/* Submissions List */}
-            <div className="grid gap-4">
-              {filteredSubmissions.map((submission) => (
-                <Card
-                  key={submission.id}
-                  className="bg-gradient-to-br from-gray-800/80 to-gray-900/80 border-gray-700/50 backdrop-blur-sm hover:shadow-lg hover:shadow-purple-500/10 transition-all duration-300 hover:scale-[1.02]"
-                >
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-4">
-                        {/* Album Art */}
-                        <div className="relative group">
-                          <div className="w-16 h-16 bg-gradient-to-br from-purple-500 via-pink-500 to-cyan-500 rounded-xl flex items-center justify-center shadow-lg animate-pulse">
-                            <Music className="h-8 w-8 text-white" />
-                          </div>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="absolute inset-0 w-16 h-16 rounded-xl bg-black/50 hover:bg-black/70 opacity-0 group-hover:opacity-100 transition-all duration-300"
-                            onClick={() => handlePlayPause(submission.id)}
-                          >
-                            {isPlaying === submission.id ? (
-                              <Pause className="h-6 w-6 text-white" />
-                            ) : (
-                              <Play className="h-6 w-6 text-white" />
-                            )}
-                          </Button>
-                        </div>
-
-                        {/* Track Info */}
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-white text-lg">{submission.title}</h3>
-                          <p className="text-gray-300">by {submission.artist}</p>
-                          <p className="text-sm text-gray-400">{submission.email}</p>
-                          <p className="text-xs text-gray-500">
-                            {new Date(submission.submittedAt).toLocaleDateString()}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Badges and Actions */}
-                      <div className="flex items-center space-x-4">
-                        <div className="flex flex-col items-end space-y-3">
-                          <div className="flex space-x-2">
-                            <Badge className={getTierBadgeColor(submission.tier) + " text-white border-0 shadow-lg"}>
-                              {submission.tier}
-                            </Badge>
-                            <Badge
-                              className={getStatusBadgeColor(submission.status) + " text-white border-0 shadow-lg"}
-                            >
-                              {submission.status}
-                            </Badge>
-                          </div>
-                          {submission.rating && (
-                            <div className="flex items-center space-x-1">
-                              {[...Array(5)].map((_, i) => (
-                                <Star
-                                  key={i}
-                                  className={`h-4 w-4 ${
-                                    i < submission.rating! ? "text-yellow-400 fill-current" : "text-gray-600"
-                                  }`}
-                                />
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex flex-col space-y-2">
-                          <Button
-                            size="sm"
-                            onClick={() => handleReview(submission)}
-                            className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 border-0 shadow-lg"
-                          >
-                            <Eye className="h-4 w-4 mr-2" />
-                            Review
-                          </Button>
-                          <Button
-                            size="sm"
-                            className="bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 border-0 shadow-lg"
-                          >
-                            <Download className="h-4 w-4 mr-2" />
-                            Download
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </TabsContent>
-
-          {/* Media Tab */}
-          <TabsContent value="media" className="space-y-6">
-            <div className="grid md:grid-cols-2 gap-6">
-              <Card className="bg-gradient-to-br from-gray-800/80 to-gray-900/80 border-gray-700/50 backdrop-blur-sm">
-                <CardHeader>
-                  <CardTitle className="text-white flex items-center">
-                    <Youtube className="h-5 w-5 mr-2 text-red-500" />
-                    Auto-Sync YouTube
-                  </CardTitle>
-                  <CardDescription className="text-gray-400">
-                    Automatically sync latest episodes from the YouTube channel
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <Button
-                    onClick={handleMediaUpdate}
-                    disabled={loading}
-                    className="w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 border-0 shadow-lg"
-                  >
-                    {loading ? "Syncing..." : "Update Media"}
-                  </Button>
-                  <p className="text-sm text-gray-500">Last sync: Never</p>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-gradient-to-br from-gray-800/80 to-gray-900/80 border-gray-700/50 backdrop-blur-sm">
-                <CardHeader>
-                  <CardTitle className="text-white flex items-center">
-                    <Plus className="h-5 w-5 mr-2 text-green-500" />
-                    Manual Video Add
-                  </CardTitle>
-                  <CardDescription className="text-gray-400">Manually add a specific YouTube video</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <Label htmlFor="youtube-url" className="text-white">
-                      YouTube URL
-                    </Label>
-                    <Input
-                      id="youtube-url"
-                      placeholder="https://youtube.com/watch?v=..."
-                      value={youtubeUrl}
-                      onChange={(e) => setYoutubeUrl(e.target.value)}
-                      className="bg-gray-700/50 border-gray-600/50 text-white backdrop-blur-sm"
-                    />
-                  </div>
-                  <Button
-                    onClick={handleManualVideoAdd}
-                    disabled={loading || !youtubeUrl}
-                    className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 border-0 shadow-lg"
-                  >
-                    {loading ? "Adding..." : "Add Video"}
-                  </Button>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          {/* Privileges Tab (Master Dev Only) */}
-          {user.role === "master_dev" && (
-            <TabsContent value="privileges" className="space-y-6">
-              <div className="grid md:grid-cols-2 gap-6">
-                <Card className="bg-gradient-to-br from-gray-800/80 to-gray-900/80 border-gray-700/50 backdrop-blur-sm">
-                  <CardHeader>
-                    <CardTitle className="text-white flex items-center">
-                      <Plus className="h-5 w-5 mr-2 text-green-500" />
-                      Grant Admin Privileges
-                    </CardTitle>
-                    <CardDescription className="text-gray-400">Add new admin users to the platform</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div>
-                      <Label htmlFor="admin-email" className="text-white">
-                        Email Address
-                      </Label>
-                      <Input
-                        id="admin-email"
-                        type="email"
-                        placeholder="user@example.com"
-                        value={newAdminEmail}
-                        onChange={(e) => setNewAdminEmail(e.target.value)}
-                        className="bg-gray-700/50 border-gray-600/50 text-white backdrop-blur-sm"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="admin-role" className="text-white">
-                        Role
-                      </Label>
-                      <Select value={newAdminRole} onValueChange={setNewAdminRole}>
-                        <SelectTrigger className="bg-gray-700/50 border-gray-600/50 text-white backdrop-blur-sm">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className="bg-gray-700 border-gray-600">
-                          <SelectItem value="admin">Admin</SelectItem>
-                          <SelectItem value="content_reviewer">Content Reviewer</SelectItem>
-                          <SelectItem value="limited_admin">Limited Admin</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <Button
-                      onClick={handleGrantAdmin}
-                      disabled={loading || !newAdminEmail}
-                      className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 border-0 shadow-lg"
-                    >
-                      {loading ? "Granting..." : "Grant Privileges"}
-                    </Button>
-                  </CardContent>
-                </Card>
-
-                <Card className="bg-gradient-to-br from-gray-800/80 to-gray-900/80 border-gray-700/50 backdrop-blur-sm">
-                  <CardHeader>
-                    <CardTitle className="text-white flex items-center">
-                      <Users className="h-5 w-5 mr-2 text-blue-500" />
-                      Current Admins
-                    </CardTitle>
-                    <CardDescription className="text-gray-400">Manage existing admin users</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      {admins.map((admin) => (
-                        <div
-                          key={admin.id}
-                          className="flex items-center justify-between p-4 bg-gradient-to-r from-gray-700/30 to-gray-800/30 rounded-xl border border-gray-600/30"
-                        >
-                          <div className="flex items-center space-x-3">
-                            <div className="w-10 h-10 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full flex items-center justify-center">
-                              {admin.role === "master_dev" ? (
-                                <Crown className="h-5 w-5 text-white" />
-                              ) : (
-                                <Shield className="h-5 w-5 text-white" />
-                              )}
-                            </div>
-                            <div>
-                              <p className="font-medium text-white">{admin.name}</p>
-                              <p className="text-sm text-gray-400">{admin.email}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center space-x-3">
-                            <Badge
-                              className={
-                                admin.role === "master_dev"
-                                  ? "bg-gradient-to-r from-yellow-600 to-orange-600 text-white border-0"
-                                  : "bg-gradient-to-r from-blue-600 to-purple-600 text-white border-0"
-                              }
-                            >
-                              {admin.role === "master_dev" ? "Master Dev" : "Admin"}
-                            </Badge>
-                            {admin.role !== "master_dev" && (
-                              <Button
-                                size="sm"
-                                onClick={() => handleRevokeAdmin(admin.id, admin.email)}
-                                disabled={loading}
-                                className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 border-0 shadow-lg"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            </TabsContent>
-          )}
-
-          {/* Dev Tools Tab (Master Dev Only) */}
-          {user.role === "master_dev" && (
-            <TabsContent value="dev-tools" className="space-y-6">
-              <Card className="bg-gradient-to-br from-gray-800/80 to-gray-900/80 border-gray-700/50 backdrop-blur-sm">
-                <CardHeader>
-                  <CardTitle className="text-white flex items-center">
-                    <Crown className="h-5 w-5 mr-2 text-yellow-400" />
-                    Developer Tools
-                  </CardTitle>
-                  <CardDescription className="text-gray-400">Advanced development and testing tools</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="grid md:grid-cols-2 gap-6">
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-semibold text-white">Database Tools</h3>
-                      <div className="space-y-2">
-                        <Button className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 border-0 shadow-lg">
-                          <Upload className="h-4 w-4 mr-2" />
-                          Seed Test Data
-                        </Button>
-                        <Button className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 border-0 shadow-lg">
-                          <Settings className="h-4 w-4 mr-2" />
-                          Reset Database
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-semibold text-white">Testing Tools</h3>
-                      <div className="space-y-2">
-                        <Button className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 border-0 shadow-lg">
-                          <CheckCircle className="h-4 w-4 mr-2" />
-                          Run Tests
-                        </Button>
-                        <Button className="w-full bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 border-0 shadow-lg">
-                          <Eye className="h-4 w-4 mr-2" />
-                          View Logs
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-          )}
-
-          {/* Master Settings Tab (Master Dev Only) */}
-          {user.role === "master_dev" && (
-            <TabsContent value="master-settings" className="space-y-6">
-              <Card className="bg-gradient-to-br from-gray-800/80 to-gray-900/80 border-gray-700/50 backdrop-blur-sm">
-                <CardHeader>
-                  <CardTitle className="text-white flex items-center">
-                    <Settings className="h-5 w-5 mr-2 text-yellow-400" />
-                    Master Settings
-                  </CardTitle>
-                  <CardDescription className="text-gray-400">System-wide configuration and settings</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-gray-400">Master settings panel coming soon...</p>
-                </CardContent>
-              </Card>
-            </TabsContent>
-          )}
-        </Tabs>
-      </div>
-
-      {/* Review Modal */}
-      {selectedSubmission && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <Card className="bg-gradient-to-br from-gray-800/95 to-gray-900/95 border-gray-700/50 backdrop-blur-sm w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <CardHeader>
-              <CardTitle className="text-white">Review Submission</CardTitle>
-              <CardDescription className="text-gray-400">
-                {selectedSubmission.title} by {selectedSubmission.artist}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Rating */}
-              <div>
-                <Label className="text-white">Rating</Label>
-                <div className="flex items-center space-x-1 mt-2">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <Button
-                      key={star}
-                      variant="ghost"
-                      size="sm"
-                      onClick={() =>
-                        setSelectedSubmission({
-                          ...selectedSubmission,
-                          rating: star,
-                        })
-                      }
-                    >
-                      <Star
-                        className={`h-6 w-6 ${
-                          star <= (selectedSubmission.rating || 0) ? "text-yellow-400 fill-current" : "text-gray-600"
-                        }`}
-                      />
-                    </Button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Status */}
-              <div>
-                <Label className="text-white">Status</Label>
-                <Select
-                  value={selectedSubmission.status}
-                  onValueChange={(value) =>
-                    setSelectedSubmission({
-                      ...selectedSubmission,
-                      status: value as any,
-                    })
-                  }
-                >
-                  <SelectTrigger className="bg-gray-700/50 border-gray-600/50 text-white backdrop-blur-sm mt-2">
+                <Select value={submissionFilter} onValueChange={setSubmissionFilter}>
+                  <SelectTrigger className="w-40 bg-gray-800 border-gray-700 text-white">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-gray-700 border-gray-600">
+                  <SelectContent className="bg-gray-800 border-gray-700">
+                    <SelectItem value="all">All Status</SelectItem>
                     <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="reviewing">Reviewing</SelectItem>
+                    <SelectItem value="in_review">In Review</SelectItem>
                     <SelectItem value="approved">Approved</SelectItem>
                     <SelectItem value="rejected">Rejected</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+            </div>
 
-              {/* Mood */}
-              <div>
-                <Label className="text-white">Mood/Emotion</Label>
-                <Input
-                  placeholder="e.g., energetic, chill, dark"
-                  value={selectedSubmission.mood || ""}
-                  onChange={(e) =>
-                    setSelectedSubmission({
-                      ...selectedSubmission,
-                      mood: e.target.value,
-                    })
-                  }
-                  className="bg-gray-700/50 border-gray-600/50 text-white backdrop-blur-sm mt-2"
-                />
-              </div>
+            <div className="grid gap-4">
+              {submissions.length === 0 ? (
+                <Card className="bg-gray-800 border-gray-700">
+                  <CardContent className="p-6 text-center">
+                    <Music className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-400">No submissions found</p>
+                    <p className="text-sm text-gray-500 mt-2">
+                      {submissionFilter !== "all" || submissionSearch
+                        ? "Try adjusting your filters"
+                        : "Submissions will appear here when users start uploading"}
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                submissions.map((submission) => (
+                  <Card key={submission.id} className="bg-gray-800 border-gray-700">
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-4 mb-3">
+                            <h3 className="text-lg font-semibold text-white">{submission.tracks.title}</h3>
+                            {getStatusBadge(submission.status)}
+                          </div>
+                          <div className="text-gray-400 space-y-1">
+                            <p className="flex items-center">
+                              <Headphones className="h-4 w-4 mr-2" />
+                              Artist: {submission.tracks.artist}
+                            </p>
+                            <p className="flex items-center">
+                              <Mail className="h-4 w-4 mr-2" />
+                              Submitted by: {submission.users.name} ({submission.users.email})
+                            </p>
+                            <p className="flex items-center">
+                              <Clock className="h-4 w-4 mr-2" />
+                              Duration: {formatDuration(submission.tracks.duration)}
+                            </p>
+                            <p className="flex items-center">
+                              <Calendar className="h-4 w-4 mr-2" />
+                              Submitted: {formatRelativeTime(submission.created_at)}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Button
+                            onClick={() => handlePlayAudio(submission.tracks.file_url, submission.id)}
+                            variant="outline"
+                            className="border-gray-600 bg-transparent"
+                          >
+                            {currentlyPlaying === submission.id && isPlaying ? (
+                              <Pause className="h-4 w-4 mr-2" />
+                            ) : (
+                              <Play className="h-4 w-4 mr-2" />
+                            )}
+                            {currentlyPlaying === submission.id && isPlaying ? "Pause" : "Play"}
+                          </Button>
+                          <Button
+                            onClick={() => {
+                              setReviewingSubmission(submission)
+                              setReviewStatus(submission.status)
+                            }}
+                            className="bg-blue-600 hover:bg-blue-700"
+                          >
+                            <MessageSquare className="h-4 w-4 mr-2" />
+                            Review
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+            </div>
+          </TabsContent>
 
-              {/* Notes */}
-              <div>
-                <Label className="text-white">Review Notes</Label>
-                <Textarea
-                  placeholder="Add your review notes here..."
-                  value={selectedSubmission.notes || ""}
-                  onChange={(e) =>
-                    setSelectedSubmission({
-                      ...selectedSubmission,
-                      notes: e.target.value,
-                    })
-                  }
-                  className="bg-gray-700/50 border-gray-600/50 text-white backdrop-blur-sm mt-2"
-                  rows={4}
-                />
+          {/* Users Tab */}
+          <TabsContent value="users" className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold">User Management</h2>
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-2">
+                  <Search className="h-4 w-4 text-gray-400" />
+                  <Input
+                    placeholder="Search users..."
+                    value={userSearch}
+                    onChange={(e) => setUserSearch(e.target.value)}
+                    className="w-64 bg-gray-800 border-gray-700 text-white"
+                  />
+                </div>
+                <Select value={userFilter} onValueChange={setUserFilter}>
+                  <SelectTrigger className="w-40 bg-gray-800 border-gray-700 text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-gray-800 border-gray-700">
+                    <SelectItem value="all">All Roles</SelectItem>
+                    <SelectItem value="user">Users</SelectItem>
+                    <SelectItem value="admin">Admins</SelectItem>
+                    <SelectItem value="master_dev">Master Devs</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
+            </div>
 
-              {/* Actions */}
-              <div className="flex justify-end space-x-3">
-                <Button
-                  onClick={() => setSelectedSubmission(null)}
-                  className="bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 border-0"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleSaveReview}
-                  disabled={loading}
-                  className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 border-0 shadow-lg"
-                >
-                  {loading ? "Saving..." : "Save Review"}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+            <div className="grid gap-4">
+              {users.length === 0 ? (
+                <Card className="bg-gray-800 border-gray-700">
+                  <CardContent className="p-6 text-center">
+                    <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-400">No users found</p>
+                    <p className="text-sm text-gray-500 mt-2">
+                      {userFilter !== "all" || userSearch
+                        ? "Try adjusting your filters"
+                        : "Users will appear here when they sign up"}
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                users.map((userData) => (
+                  <Card key={userData.id} className="bg-gray-800 border-gray-700">
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-4 mb-3">
+                            <h3 className="text-lg font-semibold text-white">{userData.name}</h3>
+                            {getTierBadge(userData.tier)}
+                            {getRoleBadge(userData.role)}
+                            {userData.is_verified ? (
+                              <Badge className="bg-green-500 text-white">
+                                <UserCheck className="h-3 w-3 mr-1" />
+                                Verified
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-yellow-500 text-white">
+                                <UserX className="h-3 w-3 mr-1" />
+                                Unverified
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="text-gray-400 space-y-1">
+                            <p className="flex items-center">
+                              <Mail className="h-4 w-4 mr-2" />
+                              Email: {userData.email}
+                            </p>
+                            <p className="flex items-center">
+                              <CreditCard className="h-4 w-4 mr-2" />
+                              Credits:{" "}
+                              {userData.submission_credits === 999999 ? "Unlimited" : userData.submission_credits}
+                            </p>
+                            <p className="flex items-center">
+                              <Calendar className="h-4 w-4 mr-2" />
+                              Joined: {formatRelativeTime(userData.created_at)}
+                            </p>
+                            <p className="flex items-center">
+                              <Activity className="h-4 w-4 mr-2" />
+                              Last updated: {formatRelativeTime(userData.updated_at)}
+                            </p>
+                          </div>
+                        </div>
+                        {user.role === "master_dev" && (
+                          <div className="flex items-center space-x-2">
+                            <Button
+                              onClick={() => {
+                                setEditingUser(userData)
+                                setEditUserTier(userData.tier)
+                                setEditUserRole(userData.role)
+                                setEditUserCredits(userData.submission_credits)
+                                setEditUserVerified(userData.is_verified)
+                              }}
+                              className="bg-purple-600 hover:bg-purple-700"
+                            >
+                              <Edit className="h-4 w-4 mr-2" />
+                              Edit
+                            </Button>
+                            {userData.role !== "master_dev" && (
+                              <Button
+                                onClick={() => handleDeleteUser(userData.id)}
+                                variant="destructive"
+                                className="bg-red-600 hover:bg-red-700"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+            </div>
+          </TabsContent>
+
+          {/* Media Tab */}
+          <TabsContent value="media" className="space-y-6">
+            <div className="grid lg:grid-cols-2 gap-6">
+              <Card className="bg-gray-800 border-gray-700">
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <Youtube className="h-5 w-5 mr-2 text-red-500" />
+                    Sync YouTube Video
+                  </CardTitle>
+                  <CardDescription className="text-gray-400">
+                    Add YouTube videos to the platform media library
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <Label className="text-white">YouTube URL</Label>
+                    <Input
+                      placeholder="https://youtube.com/watch?v=..."
+                      value={youtubeUrl}
+                      onChange={(e) => setYoutubeUrl(e.target.value)}
+                      className="bg-gray-700 border-gray-600 text-white"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-white">Title</Label>
+                    <Input
+                      placeholder="Video title"
+                      value={mediaTitle}
+                      onChange={(e) => setMediaTitle(e.target.value)}
+                      className="bg-gray-700 border-gray-600 text-white"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-white">Description</Label>
+                    <Textarea
+                      placeholder="Video description"
+                      value={mediaDescription}
+                      onChange={(e) => setMediaDescription(e.target.value)}
+                      className="bg-gray-700 border-gray-600 text-white min-h-32"
+                    />
+                  </div>
+                  <Button
+                    onClick={handleSyncYouTube}
+                    className="w-full bg-red-600 hover:bg-red-700"
+                    disabled={uploadingMedia}
+                  >
+                    {uploadingMedia ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                        Syncing...
+                      </>
+                    ) : (
+                      <>
+                        <Youtube className="h-4 w-4 mr-2" />
+                        Sync YouTube Video
+                      </>
+                    )}
+                  </Button>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-gray-800 border-gray-700">
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <Upload className="h-5 w-5 mr-2 text-blue-500" />
+                    Upload Custom Media
+                  </CardTitle>
+                  <CardDescription className="text-gray-400">
+                    Upload custom audio, video, or image files
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="border-2 border-dashed border-gray-600 rounded-lg p-8 text-center">
+                    <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-400 mb-2">Drag and drop files here</p>
+                    <p className="text-sm text-gray-500">or click to browse</p>
+                    <Button variant="outline" className="mt-4 border-gray-600 bg-transparent">
+                      Choose Files
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Media Library */}
+            <Card className="bg-gray-800 border-gray-700">
+              <CardHeader>
+                <CardTitle>Media Library</CardTitle>
+                <CardDescription className="text-gray-400">Manage uploaded media files</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {media.length === 0 ? (
+                  <div className="text-center py-8">
+                    <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-400">No media files found</p>
+                    <p className="text-sm text-gray-500 mt-2">Upload or sync media to get started</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {media.map((item) => (
+                      <Card key={item.id} className="bg-gray-700 border-gray-600">
+                        <CardContent className="p-4">
+                          <div className="aspect-video bg-gray-600 rounded-lg mb-3 flex items-center justify-center">
+                            {item.media_type === "youtube" ? (
+                              <Youtube className="h-8 w-8 text-red-500" />
+                            ) : (
+                              <FileText className="h-8 w-8 text-gray-400" />
+                            )}
+                          </div>
+                          <h4 className="font-semibold text-white truncate">{item.title}</h4>
+                          <p className="text-sm text-gray-400 mt-1 line-clamp-2">{item.description}</p>
+                          <div className="flex items-center justify-between mt-3">
+                            <Badge className="bg-blue-500 text-white text-xs">{item.media_type.toUpperCase()}</Badge>
+                            <div className="flex space-x-1">
+                              <Button size="sm" variant="ghost" className="text-gray-400 hover:text-white">
+                                <Eye className="h-3 w-3" />
+                              </Button>
+                              <Button size="sm" variant="ghost" className="text-gray-400 hover:text-white">
+                                <Edit className="h-3 w-3" />
+                              </Button>
+                              <Button size="sm" variant="ghost" className="text-gray-400 hover:text-red-400">
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Analytics Tab */}
+          <TabsContent value="analytics" className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <Card className="bg-gray-800 border-gray-700">
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <BarChart3 className="h-5 w-5 mr-2 text-blue-500" />
+                    Submission Trends
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-center py-8">
+                    <BarChart3 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-400">Analytics coming soon</p>
+                    <p className="text-sm text-gray-500 mt-2">Detailed charts and insights will be available here</p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-gray-800 border-gray-700">
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <TrendingUp className="h-5 w-5 mr-2 text-green-500" />
+                    User Growth
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-center py-8">
+                    <TrendingUp className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-400">Growth metrics coming soon</p>
+                    <p className="text-sm text-gray-500 mt-2">User registration and engagement data</p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-gray-800 border-gray-700">
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <Activity className="h-5 w-5 mr-2 text-purple-500" />
+                    Platform Activity
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-center py-8">
+                    <Activity className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-400">Activity metrics coming soon</p>
+                    <p className="text-sm text-gray-500 mt-2">Real-time platform usage statistics</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* System Tab (Master Dev Only) */}
+          {user.role === "master_dev" && (
+            <TabsContent value="system" className="space-y-6">
+              <Card className="bg-gradient-to-r from-red-900/50 to-purple-900/50 border-red-500/50">
+                <CardHeader>
+                  <CardTitle className="flex items-center text-red-400">
+                    <Shield className="h-5 w-5 mr-2" />
+                    Master Developer System Console
+                  </CardTitle>
+                  <CardDescription className="text-red-300">
+                    Advanced system controls and database management
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="grid md:grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                      <h3 className="text-lg font-semibold text-white">System Controls</h3>
+                      <div className="space-y-2">
+                        <Button className="w-full bg-orange-600 hover:bg-orange-700">
+                          <Settings className="h-4 w-4 mr-2" />
+                          System Settings
+                        </Button>
+                        <Button className="w-full bg-purple-600 hover:bg-purple-700">
+                          <RefreshCw className="h-4 w-4 mr-2" />
+                          Clear All Caches
+                        </Button>
+                        <Button className="w-full bg-blue-600 hover:bg-blue-700">
+                          <Database className="h-4 w-4 mr-2" />
+                          Database Tools
+                        </Button>
+                        <Button className="w-full bg-green-600 hover:bg-green-700">
+                          <Server className="h-4 w-4 mr-2" />
+                          Server Status
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="space-y-4">
+                      <h3 className="text-lg font-semibold text-white">Emergency Controls</h3>
+                      <div className="space-y-2">
+                        <Button className="w-full bg-yellow-600 hover:bg-yellow-700">
+                          <Zap className="h-4 w-4 mr-2" />
+                          Performance Monitor
+                        </Button>
+                        <Button className="w-full bg-indigo-600 hover:bg-indigo-700">
+                          <Download className="h-4 w-4 mr-2" />
+                          Export Data
+                        </Button>
+                        <Button className="w-full bg-red-600 hover:bg-red-700">
+                          <AlertCircle className="h-4 w-4 mr-2" />
+                          Emergency Reset
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Alert className="bg-yellow-900/50 border-yellow-700">
+                    <Crown className="h-4 w-4" />
+                    <AlertDescription className="text-yellow-200">
+                      <strong>Master Developer Access:</strong> You have unrestricted access to all system functions.
+                      Use these controls responsibly as they can affect the entire platform.
+                    </AlertDescription>
+                  </Alert>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
+        </Tabs>
+
+        {/* Review Modal */}
+        {reviewingSubmission && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <Card className="bg-gray-800 border-gray-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+              <CardHeader>
+                <CardTitle className="text-white">Review: {reviewingSubmission.tracks.title}</CardTitle>
+                <CardDescription className="text-gray-400">
+                  by {reviewingSubmission.tracks.artist} • Submitted by {reviewingSubmission.users.name}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label className="text-white">Review Status</Label>
+                  <Select value={reviewStatus} onValueChange={setReviewStatus}>
+                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                      <SelectValue placeholder="Select status" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-gray-800 border-gray-700">
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="in_review">In Review</SelectItem>
+                      <SelectItem value="approved">Approved</SelectItem>
+                      <SelectItem value="rejected">Rejected</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-white">Rating (1-5)</Label>
+                  <div className="flex items-center space-x-2 mt-2">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        onClick={() => setReviewRating(star)}
+                        className={`${
+                          star <= reviewRating ? "text-yellow-400" : "text-gray-600"
+                        } hover:text-yellow-400 transition-colors`}
+                      >
+                        <Star className="h-6 w-6 fill-current" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-white">Feedback</Label>
+                  <Textarea
+                    placeholder="Provide detailed feedback..."
+                    value={reviewFeedback}
+                    onChange={(e) => setReviewFeedback(e.target.value)}
+                    className="bg-gray-700 border-gray-600 text-white min-h-32"
+                  />
+                </div>
+                <div>
+                  <Label className="text-white">Tags (comma separated)</Label>
+                  <Input
+                    placeholder="e.g., catchy, needs mixing, great vocals"
+                    value={reviewTags.join(", ")}
+                    onChange={(e) =>
+                      setReviewTags(
+                        e.target.value
+                          .split(",")
+                          .map((tag) => tag.trim())
+                          .filter(Boolean),
+                      )
+                    }
+                    className="bg-gray-700 border-gray-600 text-white"
+                  />
+                </div>
+                <div className="flex justify-end space-x-2 pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setReviewingSubmission(null)
+                      setReviewFeedback("")
+                      setReviewRating(0)
+                      setReviewStatus("")
+                      setReviewTags([])
+                    }}
+                    className="border-gray-600"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleReviewSubmission}
+                    className="bg-blue-600 hover:bg-blue-700"
+                    disabled={!reviewStatus}
+                  >
+                    Submit Review
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Edit User Modal */}
+        {editingUser && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <Card className="bg-gray-800 border-gray-700 w-full max-w-md">
+              <CardHeader>
+                <CardTitle className="text-white">Edit User: {editingUser.name}</CardTitle>
+                <CardDescription className="text-gray-400">{editingUser.email}</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label className="text-white">Tier</Label>
+                  <Select value={editUserTier} onValueChange={setEditUserTier}>
+                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-gray-800 border-gray-700">
+                      <SelectItem value="creator">Creator</SelectItem>
+                      <SelectItem value="indie">Indie</SelectItem>
+                      <SelectItem value="pro">Pro</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-white">Role</Label>
+                  <Select value={editUserRole} onValueChange={setEditUserRole}>
+                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-gray-800 border-gray-700">
+                      <SelectItem value="user">User</SelectItem>
+                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="master_dev">Master Dev</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-white">Submission Credits</Label>
+                  <Input
+                    type="number"
+                    value={editUserCredits}
+                    onChange={(e) => setEditUserCredits(Number.parseInt(e.target.value) || 0)}
+                    className="bg-gray-700 border-gray-600 text-white"
+                  />
+                </div>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="verified"
+                    checked={editUserVerified}
+                    onChange={(e) => setEditUserVerified(e.target.checked)}
+                    className="rounded border-gray-600 bg-gray-700"
+                  />
+                  <Label htmlFor="verified" className="text-white">
+                    Verified Account
+                  </Label>
+                </div>
+                <div className="flex justify-end space-x-2 pt-4">
+                  <Button variant="outline" onClick={() => setEditingUser(null)} className="border-gray-600">
+                    Cancel
+                  </Button>
+                  <Button onClick={handleEditUser} className="bg-purple-600 hover:bg-purple-700">
+                    Update User
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

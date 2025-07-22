@@ -3,18 +3,15 @@ import { getCurrentUser } from "@/lib/supabase/auth"
 
 export async function GET() {
   try {
-    console.log("🔍 API /auth/me: Starting user lookup...")
     const user = await getCurrentUser()
 
     if (!user) {
-      console.log("❌ API /auth/me: No user found")
-      return NextResponse.json({ user: null }, { status: 200 })
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
 
-    console.log("✅ API /auth/me: User found:", user.email, "Role:", user.role)
-    return NextResponse.json({ user }, { status: 200 })
+    return NextResponse.json({ user })
   } catch (error) {
-    console.error("❌ API /auth/me: Error:", error)
-    return NextResponse.json({ error: "Internal server error", user: null }, { status: 500 })
+    console.error("Auth me error:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

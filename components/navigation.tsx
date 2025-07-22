@@ -32,6 +32,8 @@ export function Navigation() {
       window.location.href = "/"
     } catch (error) {
       console.error("Logout failed:", error)
+      // Fallback logout
+      document.location.href = "/"
     }
   }
 
