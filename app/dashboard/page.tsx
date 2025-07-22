@@ -4,6 +4,7 @@ import { Upload, Clock, Trophy, User, Settings, Star, CreditCard } from "lucide-
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { MasterDevQuickActions } from "@/components/admin/MasterDevQuickActions" // <-- Move this import to the top
 
 export default async function DashboardPage() {
   const user = await getCurrentUser()
@@ -49,33 +50,13 @@ export default async function DashboardPage() {
 
         {/* Master Developer Quick Actions (only for master devs) */}
         {user.role === "master_dev" && (
-          <Card className="bg-gradient-to-r from-red-900/50 to-purple-900/50 border-red-500/50 mb-8">
-            <CardHeader>
-              <CardTitle className="text-red-400">🔧 Master Developer Quick Actions</CardTitle>
-              <CardDescription className="text-red-300">Administrative controls and testing tools</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-4">
-                <Button asChild className="bg-red-600 hover:bg-red-700">
-                  <a href="/admin">Admin Portal</a>
-                </Button>
-                <Button
-                  asChild
-                  variant="outline"
-                  className="border-red-500 text-red-400 hover:bg-red-900/50 bg-transparent"
-                >
-                  <a href="/admin/privileges">Privileges Console</a>
-                </Button>
-                <Button
-                  variant="outline"
-                  className="border-purple-500 text-purple-400 hover:bg-purple-900/50 bg-transparent"
-                >
-                  Dev Tools
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <MasterDevQuickActions user={user} className="mb-8" />
         )}
+
+        {/* ...rest of your dashboard code... */}
+)}
+        import { MasterDevQuickActions } from "@/components/admin/MasterDevQuickActions
+        //
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
           {/* Submit Music Card */}
