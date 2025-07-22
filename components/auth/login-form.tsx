@@ -43,8 +43,8 @@ export function LoginForm() {
   }
 
   const fillMasterDevCredentials = () => {
-    setEmail("harris@tmbm.com")
-    setPassword("") // User must enter the actual master dev key
+    setEmail("harris@tmbm.dev")
+    setPassword(process.env.NEXT_PUBLIC_MASTER_DEV_KEY_HARRIS || "master_dev_key_harris")
   }
 
   return (
@@ -132,7 +132,7 @@ export function LoginForm() {
             className="w-full border-purple-300 text-purple-700 hover:bg-purple-50 bg-transparent"
           >
             <Key className="mr-2 h-4 w-4" />
-            Fill Master Dev Email
+            Fill Master Dev Credentials
           </Button>
 
           <div className="text-center text-sm text-gray-600">

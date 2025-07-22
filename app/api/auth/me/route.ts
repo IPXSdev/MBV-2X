@@ -1,10 +1,7 @@
-import { type NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/supabase/auth"
 
-// Force dynamic rendering for this API route
-export const dynamic = "force-dynamic"
-
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const user = await getCurrentUser()
 
@@ -14,7 +11,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ user })
   } catch (error) {
-    console.error("Get current user error:", error)
+    console.error("Auth me error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
