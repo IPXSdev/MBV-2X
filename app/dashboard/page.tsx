@@ -4,7 +4,6 @@ import { Upload, Clock, Trophy, User, Settings, Star, CreditCard } from "lucide-
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { MasterDevQuickActions } from "@/components/admin/MasterDevQuickActions"
 
 export default async function DashboardPage() {
   const user = await getCurrentUser()
@@ -48,8 +47,31 @@ export default async function DashboardPage() {
           <p className="text-gray-400">Manage your music submissions and track your progress</p>
         </div>
 
-        {/* Master Developer Quick Actions Bar */}
-        <MasterDevQuickActions user={user} className="mb-8" />
+        {/* Master Developer Quick Actions Bar (inline, always visible on dev views) */}
+        <div className="bg-gradient-to-r from-red-900/50 to-purple-900/50 border border-red-500/50 rounded-lg mb-8 p-6">
+          <div className="mb-2 flex items-center">
+            <span className="text-red-400 text-lg font-bold mr-2">🔧 Master Developer Quick Actions</span>
+            <span className="text-red-300 text-sm">Administrative controls and testing tools</span>
+          </div>
+          <div className="flex flex-wrap gap-4">
+            <Button asChild className="bg-red-600 hover:bg-red-700">
+              <a href="/admin">Admin Portal</a>
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              className="border-red-500 text-red-400 hover:bg-red-900/50 bg-transparent"
+            >
+              <a href="/admin/privileges">Privileges Console</a>
+            </Button>
+            <Button
+              variant="outline"
+              className="border-purple-500 text-purple-400 hover:bg-purple-900/50 bg-transparent"
+            >
+              Dev Tools
+            </Button>
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
           {/* Submit Music Card */}
