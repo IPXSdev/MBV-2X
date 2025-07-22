@@ -2,9 +2,9 @@ import { getCurrentUser } from "@/lib/supabase/auth"
 import { redirect } from "next/navigation"
 import { Upload, Clock, Trophy, User, Settings, Star, CreditCard } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { MasterDevQuickActions } from "@/components/admin/MasterDevQuickActions" // <-- Move this import to the top
+import { MasterDevQuickActions } from "@/components/admin/MasterDevQuickActions"
 
 export default async function DashboardPage() {
   const user = await getCurrentUser()
@@ -48,15 +48,8 @@ export default async function DashboardPage() {
           <p className="text-gray-400">Manage your music submissions and track your progress</p>
         </div>
 
-        {/* Master Developer Quick Actions (only for master devs) */}
-        {user.role === "master_dev" && (
-          <MasterDevQuickActions user={user} className="mb-8" />
-        )}
-
-        {/* ...rest of your dashboard code... */}
-)}
-        import { MasterDevQuickActions } from "@/components/admin/MasterDevQuickActions
-        //
+        {/* Master Developer Quick Actions Bar */}
+        <MasterDevQuickActions user={user} className="mb-8" />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
           {/* Submit Music Card */}
