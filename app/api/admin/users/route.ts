@@ -2,6 +2,8 @@ import { type NextRequest, NextResponse } from "next/server"
 import { requireAdmin } from "@/lib/supabase/auth"
 import { createClient } from "@/lib/supabase/server"
 
+export const dynamic = "force-dynamic"
+
 export async function GET(request: NextRequest) {
   try {
     await requireAdmin()

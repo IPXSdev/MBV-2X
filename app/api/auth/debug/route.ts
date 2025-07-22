@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { createServiceClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/supabase/auth"
 
+export const dynamic = "force-dynamic"
+
 export async function GET() {
   try {
     const user = await getCurrentUser()
