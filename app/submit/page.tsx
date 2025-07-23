@@ -26,6 +26,7 @@ import {
   Music,
   Sparkles,
 } from "lucide-react"
+import { createClient } from "@/lib/supabase/client"
 
 interface SubmissionUser {
   id: string
@@ -103,6 +104,7 @@ export default function SubmitPage() {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const [audioDuration, setAudioDuration] = useState<number | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
+  const [currentlyPlaying, setCurrentlyPlaying] = useState<string | null>(null)
 
   useEffect(() => {
     checkAuth()
@@ -142,15 +144,21 @@ export default function SubmitPage() {
     const file = event.target.files?.[0]
     if (file) {
       setSelectedFile(file)
-      // Update audio duration when a new file is selected
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const audioContext = new AudioContext()
-        audioContext.decodeAudioData(e.target?.result as ArrayBuffer).then((buffer) => {
-          setAudioDuration(buffer.duration)
-        })
-      }
-      reader.readAsArrayBuffer(file)
+
+      // Create audio element to get duration
+      const audio = document.createElement("audio")
+      const url = URL.createObjectURL(file)
+      audio.src = url
+
+      audio.addEventListener("loadedmetadata", () => {
+        setAudioDuration(audio.duration)
+        URL.revokeObjectURL(url)
+      })
+
+      audio.addEventListener("error", () => {
+        console.error("Error loading audio file")
+        URL.revokeObjectURL(url)
+      })
     }
   }
 
@@ -205,21 +213,61 @@ export default function SubmitPage() {
     }
 
     setSubmitting(true)
-    setUploadProgress(0) // Reset upload progress
-
-    const submitData = new FormData()
-    submitData.append("title", formData.title)
-    submitData.append("artistName", formData.artistName)
-    submitData.append("genre", formData.genre)
-    submitData.append("description", formData.description)
-    submitData.append("audio", selectedFile as Blob) // Explicitly cast selectedFile to Blob
-    submitData.append("moodTags", JSON.stringify(selectedMoodTags))
+    setUploadProgress(0)
 
     try {
-      const response = await fetch("/api/submit", {
+      let fileUrl = ""
+
+      // Upload file to Supabase storage if selected
+      if (selectedFile) {
+        const supabase = createClient()
+        const fileExt = selectedFile.name.split(".").pop()
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
+        const filePath = `submissions/${fileName}`
+
+        setUploadProgress(25)
+
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from("audio-submissions")
+          .upload(filePath, selectedFile, {
+            cacheControl: "3600",
+            upsert: false,
+          })
+
+        if (uploadError) {
+          throw new Error(`Upload failed: ${uploadError.message}`)
+        }
+
+        setUploadProgress(50)
+
+        // Get public URL
+        const {
+          data: { publicUrl },
+        } = supabase.storage.from("audio-submissions").getPublicUrl(filePath)
+
+        fileUrl = publicUrl
+        setUploadProgress(75)
+      }
+
+      // Submit to API
+      const response = await fetch("/api/submissions/create", {
         method: "POST",
-        body: submitData,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          track_title: formData.title,
+          artist_name: formData.artistName,
+          genre: formData.genre,
+          mood_tags: selectedMoodTags,
+          description: formData.description,
+          file_url: fileUrl,
+          file_size: selectedFile?.size || 0,
+          duration: audioDuration || 0,
+        }),
       })
+
+      setUploadProgress(100)
 
       if (response.ok) {
         setSuccess(true)
@@ -232,31 +280,49 @@ export default function SubmitPage() {
         setSelectedFile(null)
         setSelectedMoodTags([])
         setErrors({})
-        // Optionally, reset the file input
+        setAudioDuration(null)
+
+        // Reset file input
         const fileInput = document.getElementById("audio") as HTMLInputElement
         if (fileInput) {
-          fileInput.value = "" // This will reset the file input
+          fileInput.value = ""
         }
       } else {
         const errorData = await response.json()
-        setErrors(errorData.errors || { submit: "Submission failed" })
+        setErrors({ submit: errorData.error || "Submission failed" })
       }
     } catch (error) {
       console.error("Submission error:", error)
-      setErrors({ submit: "Submission failed" })
+      setErrors({ submit: error instanceof Error ? error.message : "Submission failed" })
     } finally {
       setSubmitting(false)
+      setUploadProgress(0)
     }
   }
 
   const handlePlayPause = () => {
+    if (!selectedFile) return
+
     if (audioRef.current) {
       if (isPlaying) {
         audioRef.current.pause()
+        setIsPlaying(false)
       } else {
         audioRef.current.play()
+        setIsPlaying(true)
       }
-      setIsPlaying(!isPlaying)
+    } else {
+      // Create new audio element
+      const audio = new Audio(URL.createObjectURL(selectedFile))
+      audioRef.current = audio
+
+      audio.addEventListener("ended", () => {
+        setIsPlaying(false)
+        setCurrentlyPlaying(null)
+      })
+
+      audio.play()
+      setIsPlaying(true)
     }
   }
 

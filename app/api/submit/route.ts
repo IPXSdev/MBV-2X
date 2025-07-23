@@ -23,21 +23,22 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const body = await request.json()
-    const {
-      track_title,
-      artist_name,
-      genre,
-      mood_tags,
-      description,
-      file_url,
-      file_size,
-      duration,
-      bpm,
-      key_signature,
-    } = body
+    const formData = await request.formData()
+    const title = formData.get("title") as string
+    const artistName = formData.get("artistName") as string
+    const genre = formData.get("genre") as string
+    const description = formData.get("description") as string
+    const audioFile = formData.get("audio") as File
+    const moodTagsStr = formData.get("moodTags") as string
 
-    if (!track_title || !artist_name) {
+    let moodTags: string[] = []
+    try {
+      moodTags = JSON.parse(moodTagsStr || "[]")
+    } catch (e) {
+      console.error("Error parsing mood tags:", e)
+    }
+
+    if (!title || !artistName) {
       return NextResponse.json(
         {
           error: "Missing required fields",
@@ -47,6 +48,43 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    let fileUrl = ""
+    let fileSize = 0
+
+    // Upload file to Supabase storage if provided
+    if (audioFile && audioFile.size > 0) {
+      const supabase = await createClient()
+      const fileExt = audioFile.name.split(".").pop()
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
+      const filePath = `submissions/${fileName}`
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from("audio-submissions")
+        .upload(filePath, audioFile, {
+          cacheControl: "3600",
+          upsert: false,
+        })
+
+      if (uploadError) {
+        console.error("Upload error:", uploadError)
+        return NextResponse.json(
+          {
+            error: "File upload failed",
+            details: uploadError.message,
+          },
+          { status: 500 },
+        )
+      }
+
+      // Get public URL
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("audio-submissions").getPublicUrl(filePath)
+
+      fileUrl = publicUrl
+      fileSize = audioFile.size
+    }
+
     const supabase = await createClient()
 
     // Create the submission
@@ -54,28 +92,17 @@ export async function POST(request: NextRequest) {
       .from("submissions")
       .insert({
         user_id: user.id,
-        track_title,
-        artist_name,
+        track_title: title,
+        artist_name: artistName,
         genre,
-        mood_tags,
+        mood_tags: moodTags,
         description,
-        file_url,
-        file_size,
-        duration,
-        bpm,
-        key_signature,
+        file_url: fileUrl,
+        file_size: fileSize,
         status: "pending",
         credits_used: 1,
       })
-      .select(`
-    *,
-    users:user_id (
-      id,
-      name,
-      email,
-      tier
-    )
-  `)
+      .select()
       .single()
 
     if (submissionError) {
@@ -106,10 +133,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      submission: {
-        ...submission,
-        title: submission.track_title, // Add backward compatibility
-      },
+      submission,
     })
   } catch (error) {
     console.error("Error in submission creation:", error)

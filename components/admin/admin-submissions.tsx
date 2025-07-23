@@ -25,18 +25,20 @@ import { formatRelativeTime, getStatusBadgeColor } from "@/lib/utils"
 
 interface Submission {
   id: string
-  title: string
+  track_title: string
   artist_name: string
   genre?: string
   status: "pending" | "in_review" | "approved" | "rejected"
   admin_rating?: number
   admin_feedback?: string
-  submitted_at: string
+  created_at: string
   updated_at?: string
   file_url?: string
   file_size?: number
+  duration?: number
   mood_tags?: string[]
   description?: string
+  credits_used?: number
   users?: {
     id: string
     name: string
@@ -325,13 +327,19 @@ export function AdminSubmissions() {
                       </div>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h4 className="text-white font-medium truncate">{submission.title}</h4>
+                      <h4 className="text-white font-medium truncate">{submission.track_title}</h4>
                       <p className="text-gray-400 text-sm">by {submission.artist_name}</p>
+                      {submission.duration && (
+                        <span className="text-gray-500 text-xs">
+                          {Math.floor(submission.duration / 60)}:
+                          {String(Math.floor(submission.duration % 60)).padStart(2, "0")}
+                        </span>
+                      )}
                       <div className="flex items-center space-x-2 mt-1">
                         <Badge className={`${getStatusBadgeColor(submission.status)} text-white text-xs`}>
                           {submission.status.replace("_", " ")}
                         </Badge>
-                        <span className="text-gray-500 text-xs">{formatRelativeTime(submission.submitted_at)}</span>
+                        <span className="text-gray-500 text-xs">{formatRelativeTime(submission.created_at)}</span>
                         {submission.users && (
                           <Badge variant="outline" className="text-xs border-gray-500 text-gray-300">
                             {submission.users.tier}
@@ -458,7 +466,7 @@ export function AdminSubmissions() {
                     <FileAudio className="h-16 w-16 text-white" />
                   </div>
                   <div>
-                    <h3 className="text-white font-medium text-lg">{selectedSubmission.title}</h3>
+                    <h3 className="text-white font-medium text-lg">{selectedSubmission.track_title}</h3>
                     <p className="text-gray-400">by {selectedSubmission.artist_name}</p>
                     <div className="flex items-center space-x-2 mt-2">
                       <Badge className={`${getStatusBadgeColor(selectedSubmission.status)} text-white`}>
@@ -474,7 +482,7 @@ export function AdminSubmissions() {
                     <div className="flex items-center space-x-2">
                       <Calendar className="h-4 w-4 text-gray-400" />
                       <span className="text-gray-300 text-sm">
-                        {new Date(selectedSubmission.submitted_at).toLocaleDateString()}
+                        {new Date(selectedSubmission.created_at).toLocaleDateString()}
                       </span>
                     </div>
                     {selectedSubmission.genre && (
