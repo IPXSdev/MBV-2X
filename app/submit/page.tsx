@@ -201,6 +201,18 @@ export default function SubmitPage() {
     return Object.keys(tempErrors).length === 0
   }
 
+  const checkBucketStatus = async () => {
+    try {
+      const response = await fetch("/api/debug/bucket-status")
+      const data = await response.json()
+      console.log("Bucket status:", data)
+      return data.audioSubmissionsBucket !== null
+    } catch (error) {
+      console.error("Error checking bucket status:", error)
+      return false
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -217,25 +229,29 @@ export default function SubmitPage() {
       // Upload file to Supabase storage if selected
       if (selectedFile) {
         const supabase = createClient()
+
+        // Check bucket status first
+        setUploadProgress(10)
+        const bucketExists = await checkBucketStatus()
+
+        if (!bucketExists) {
+          throw new Error(
+            "Audio submissions bucket not found. Please run the bucket creation script or contact support.",
+          )
+        }
+
         const fileExt = selectedFile.name.split(".").pop()
         const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
         const filePath = `submissions/${fileName}`
 
         setUploadProgress(25)
 
-        // First check if bucket exists
-        const { data: buckets, error: bucketError } = await supabase.storage.listBuckets()
-        console.log("Available buckets:", buckets)
-
-        if (bucketError) {
-          console.error("Error listing buckets:", bucketError)
-          throw new Error(`Bucket check failed: ${bucketError.message}`)
-        }
-
-        const bucketExists = buckets?.some((bucket) => bucket.id === "audio-submissions")
-        if (!bucketExists) {
-          throw new Error("Audio submissions bucket not found. Please contact support.")
-        }
+        console.log("Attempting to upload file:", {
+          bucket: "audio-submissions",
+          filePath,
+          fileSize: selectedFile.size,
+          fileType: selectedFile.type,
+        })
 
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from("audio-submissions")
@@ -246,9 +262,12 @@ export default function SubmitPage() {
 
         if (uploadError) {
           console.error("Upload error details:", uploadError)
-          throw new Error(`Upload failed: ${uploadError.message}`)
+          throw new Error(
+            `Upload failed: ${uploadError.message}. Please ensure the storage bucket is properly configured.`,
+          )
         }
 
+        console.log("Upload successful:", uploadData)
         setUploadProgress(50)
 
         // Get public URL
@@ -257,6 +276,7 @@ export default function SubmitPage() {
         } = supabase.storage.from("audio-submissions").getPublicUrl(filePath)
 
         fileUrl = publicUrl
+        console.log("Generated public URL:", fileUrl)
         setUploadProgress(75)
       }
 

@@ -4,182 +4,181 @@ import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
 import { Card, CardContent } from "@/components/ui/card"
-import { Play, Pause, Volume2, VolumeX, SkipBack, SkipForward } from "lucide-react"
+import {
+  Play,
+  Pause,
+  Volume2,
+  VolumeX,
+  SkipBack,
+  SkipForward,
+  Repeat,
+  Shuffle,
+  Download,
+  Heart,
+  Share2,
+} from "lucide-react"
 import Image from "next/image"
 
 interface EnhancedAudioPlayerProps {
   src: string
-  title?: string
-  artist?: string
+  title: string
+  artist: string
   duration?: number
   showWaveform?: boolean
   mode?: "full" | "compact"
-  className?: string
+  albumArt?: string
 }
 
 export function EnhancedAudioPlayer({
   src,
-  title = "Unknown Track",
-  artist = "Unknown Artist",
+  title,
+  artist,
   duration,
   showWaveform = true,
   mode = "full",
-  className = "",
+  albumArt,
 }: EnhancedAudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const animationRef = useRef<number>()
-
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [audioDuration, setAudioDuration] = useState(duration || 0)
   const [volume, setVolume] = useState(1)
   const [isMuted, setIsMuted] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [waveformData, setWaveformData] = useState<number[]>([])
   const [audioContext, setAudioContext] = useState<AudioContext | null>(null)
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null)
-  const [dataArray, setDataArray] = useState<Uint8Array | null>(null)
+  const [isLiked, setIsLiked] = useState(false)
+  const [isRepeat, setIsRepeat] = useState(false)
+  const [isShuffle, setIsShuffle] = useState(false)
 
-  // Initialize audio context and analyser for waveform
   useEffect(() => {
-    if (showWaveform && audioRef.current) {
-      const initAudioContext = async () => {
-        try {
-          const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
-          const source = ctx.createMediaElementSource(audioRef.current!)
-          const analyserNode = ctx.createAnalyser()
+    const audio = audioRef.current
+    if (!audio) return
 
-          analyserNode.fftSize = 256
-          const bufferLength = analyserNode.frequencyBinCount
-          const dataArr = new Uint8Array(bufferLength)
-
-          source.connect(analyserNode)
-          analyserNode.connect(ctx.destination)
-
-          setAudioContext(ctx)
-          setAnalyser(analyserNode)
-          setDataArray(dataArr)
-        } catch (error) {
-          console.error("Error initializing audio context:", error)
-        }
+    const handleLoadedMetadata = () => {
+      setAudioDuration(audio.duration)
+      setIsLoading(false)
+      if (showWaveform) {
+        generateWaveform()
       }
-
-      initAudioContext()
     }
+
+    const handleTimeUpdate = () => {
+      setCurrentTime(audio.currentTime)
+    }
+
+    const handleEnded = () => {
+      if (isRepeat) {
+        audio.currentTime = 0
+        audio.play()
+      } else {
+        setIsPlaying(false)
+        setCurrentTime(0)
+      }
+    }
+
+    audio.addEventListener("loadedmetadata", handleLoadedMetadata)
+    audio.addEventListener("timeupdate", handleTimeUpdate)
+    audio.addEventListener("ended", handleEnded)
 
     return () => {
-      if (audioContext) {
-        audioContext.close()
-      }
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current)
-      }
+      audio.removeEventListener("loadedmetadata", handleLoadedMetadata)
+      audio.removeEventListener("timeupdate", handleTimeUpdate)
+      audio.removeEventListener("ended", handleEnded)
     }
-  }, [showWaveform])
+  }, [src, showWaveform, isRepeat])
 
-  // Draw waveform visualization
-  const drawWaveform = () => {
-    if (!canvasRef.current || !analyser || !dataArray) return
-
-    const canvas = canvasRef.current
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
-
-    analyser.getByteFrequencyData(dataArray)
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-    const barWidth = (canvas.width / dataArray.length) * 2.5
-    let barHeight
-    let x = 0
-
-    // Create gradient
-    const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height)
-    gradient.addColorStop(0, "#8b5cf6") // Purple
-    gradient.addColorStop(0.5, "#3b82f6") // Blue
-    gradient.addColorStop(1, "#06b6d4") // Cyan
-
-    for (let i = 0; i < dataArray.length; i++) {
-      barHeight = (dataArray[i] / 255) * canvas.height * 0.8
-
-      ctx.fillStyle = gradient
-      ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight)
-
-      x += barWidth + 1
-    }
-
-    if (isPlaying) {
-      animationRef.current = requestAnimationFrame(drawWaveform)
-    }
-  }
-
-  useEffect(() => {
-    if (isPlaying && showWaveform) {
-      drawWaveform()
-    } else if (animationRef.current) {
-      cancelAnimationFrame(animationRef.current)
-    }
-  }, [isPlaying, showWaveform, analyser, dataArray])
-
-  const togglePlayPause = async () => {
-    if (!audioRef.current) return
+  const generateWaveform = async () => {
+    if (!audioRef.current || !showWaveform) return
 
     try {
-      if (audioContext && audioContext.state === "suspended") {
-        await audioContext.resume()
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+      const response = await fetch(src)
+      const arrayBuffer = await response.arrayBuffer()
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
+
+      const rawData = audioBuffer.getChannelData(0)
+      const samples = 100
+      const blockSize = Math.floor(rawData.length / samples)
+      const filteredData = []
+
+      for (let i = 0; i < samples; i++) {
+        const blockStart = blockSize * i
+        let sum = 0
+        for (let j = 0; j < blockSize; j++) {
+          sum = sum + Math.abs(rawData[blockStart + j])
+        }
+        filteredData.push(sum / blockSize)
       }
 
-      if (isPlaying) {
-        audioRef.current.pause()
-        setIsPlaying(false)
-      } else {
-        await audioRef.current.play()
-        setIsPlaying(true)
-      }
+      const multiplier = Math.pow(Math.max(...filteredData), -1)
+      const normalizedData = filteredData.map((n) => n * multiplier)
+
+      setWaveformData(normalizedData)
+      setAudioContext(audioContext)
     } catch (error) {
-      console.error("Error playing audio:", error)
+      console.error("Error generating waveform:", error)
     }
   }
 
-  const handleTimeUpdate = () => {
-    if (audioRef.current) {
-      setCurrentTime(audioRef.current.currentTime)
-    }
-  }
+  const togglePlayPause = () => {
+    const audio = audioRef.current
+    if (!audio) return
 
-  const handleLoadedMetadata = () => {
-    if (audioRef.current) {
-      setAudioDuration(audioRef.current.duration)
-      setIsLoading(false)
+    if (isPlaying) {
+      audio.pause()
+    } else {
+      audio.play()
     }
+    setIsPlaying(!isPlaying)
   }
 
   const handleSeek = (value: number[]) => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = value[0]
-      setCurrentTime(value[0])
-    }
+    const audio = audioRef.current
+    if (!audio) return
+
+    const newTime = (value[0] / 100) * audioDuration
+    audio.currentTime = newTime
+    setCurrentTime(newTime)
   }
 
   const handleVolumeChange = (value: number[]) => {
-    const newVolume = value[0]
+    const audio = audioRef.current
+    if (!audio) return
+
+    const newVolume = value[0] / 100
+    audio.volume = newVolume
     setVolume(newVolume)
-    if (audioRef.current) {
-      audioRef.current.volume = newVolume
-    }
     setIsMuted(newVolume === 0)
   }
 
   const toggleMute = () => {
-    if (audioRef.current) {
-      if (isMuted) {
-        audioRef.current.volume = volume
-        setIsMuted(false)
-      } else {
-        audioRef.current.volume = 0
-        setIsMuted(true)
-      }
+    const audio = audioRef.current
+    if (!audio) return
+
+    if (isMuted) {
+      audio.volume = volume
+      setIsMuted(false)
+    } else {
+      audio.volume = 0
+      setIsMuted(true)
     }
+  }
+
+  const skipForward = () => {
+    const audio = audioRef.current
+    if (!audio) return
+
+    audio.currentTime = Math.min(audio.currentTime + 10, audioDuration)
+  }
+
+  const skipBackward = () => {
+    const audio = audioRef.current
+    if (!audio) return
+
+    audio.currentTime = Math.max(audio.currentTime - 10, 0)
   }
 
   const formatTime = (time: number) => {
@@ -188,102 +187,90 @@ export function EnhancedAudioPlayer({
     return `${minutes}:${seconds.toString().padStart(2, "0")}`
   }
 
-  const skipForward = () => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = Math.min(audioRef.current.currentTime + 10, audioDuration)
-    }
-  }
-
-  const skipBackward = () => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = Math.max(audioRef.current.currentTime - 10, 0)
-    }
-  }
+  const progress = audioDuration > 0 ? (currentTime / audioDuration) * 100 : 0
 
   if (mode === "compact") {
     return (
-      <div className={`flex items-center space-x-4 p-4 bg-gray-800 rounded-lg ${className}`}>
-        <div className="relative w-12 h-12 flex-shrink-0">
-          <Image
-            src="/images/default-album-art.png"
-            alt="Album Art"
-            width={48}
-            height={48}
-            className="rounded-lg object-cover"
-          />
-        </div>
+      <Card className="bg-gradient-to-r from-gray-800/50 to-gray-900/50 border-gray-700/50 backdrop-blur-sm">
+        <CardContent className="p-4">
+          <div className="flex items-center space-x-4">
+            <div className="relative w-12 h-12 rounded-lg overflow-hidden flex-shrink-0">
+              <Image
+                src={albumArt || "/images/default-album-art.png"}
+                alt={`${title} album art`}
+                fill
+                className="object-cover"
+              />
+            </div>
 
-        <div className="flex-1 min-w-0">
-          <p className="text-white font-medium truncate">{title}</p>
-          <p className="text-gray-400 text-sm truncate">{artist}</p>
-        </div>
+            <div className="flex-1 min-w-0">
+              <h4 className="text-white font-medium truncate">{title}</h4>
+              <p className="text-gray-400 text-sm truncate">{artist}</p>
+            </div>
 
-        <Button
-          onClick={togglePlayPause}
-          size="sm"
-          className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white border-0"
-        >
-          {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-        </Button>
+            <Button
+              onClick={togglePlayPause}
+              size="sm"
+              className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white border-0 w-10 h-10 rounded-full p-0"
+            >
+              {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
+            </Button>
+          </div>
 
-        <audio
-          ref={audioRef}
-          src={src}
-          onTimeUpdate={handleTimeUpdate}
-          onLoadedMetadata={handleLoadedMetadata}
-          onEnded={() => setIsPlaying(false)}
-        />
-      </div>
+          <audio ref={audioRef} src={src} preload="metadata" />
+        </CardContent>
+      </Card>
     )
   }
 
   return (
-    <Card className={`bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700 shadow-2xl ${className}`}>
+    <Card className="bg-gradient-to-br from-gray-800/80 to-gray-900/80 border-gray-700/50 backdrop-blur-sm shadow-2xl">
       <CardContent className="p-6">
-        <div className="flex items-center space-x-6">
+        <div className="flex items-start space-x-6">
           {/* Album Art */}
-          <div className="relative w-24 h-24 flex-shrink-0">
-            <div className="absolute inset-0 bg-gradient-to-r from-purple-500/20 to-blue-500/20 rounded-lg blur-xl"></div>
+          <div className="relative w-24 h-24 rounded-xl overflow-hidden flex-shrink-0 shadow-lg">
             <Image
-              src="/images/default-album-art.png"
-              alt="Album Art"
-              width={96}
-              height={96}
-              className="relative rounded-lg object-cover shadow-lg transform hover:scale-105 transition-transform duration-300"
+              src={albumArt || "/images/default-album-art.png"}
+              alt={`${title} album art`}
+              fill
+              className="object-cover transition-transform duration-300 hover:scale-105"
             />
-            {isLoading && (
-              <div className="absolute inset-0 flex items-center justify-center bg-gray-800/80 rounded-lg">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-500"></div>
-              </div>
-            )}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
           </div>
 
           {/* Track Info & Controls */}
           <div className="flex-1 space-y-4">
             {/* Track Info */}
             <div>
-              <h3 className="text-white font-semibold text-lg truncate">{title}</h3>
-              <p className="text-gray-400 truncate">{artist}</p>
+              <h3 className="text-xl font-bold text-white mb-1">{title}</h3>
+              <p className="text-gray-300 font-medium">{artist}</p>
             </div>
 
-            {/* Waveform Visualization */}
-            {showWaveform && (
-              <div className="relative">
-                <canvas ref={canvasRef} width={400} height={60} className="w-full h-15 bg-gray-900/50 rounded-md" />
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-purple-500/10 to-transparent pointer-events-none"></div>
+            {/* Waveform */}
+            {showWaveform && waveformData.length > 0 && (
+              <div className="relative h-16 bg-gray-800/50 rounded-lg overflow-hidden">
+                <div className="flex items-end justify-center h-full px-2 space-x-1">
+                  {waveformData.map((amplitude, index) => {
+                    const height = Math.max(amplitude * 100, 2)
+                    const isActive = (index / waveformData.length) * 100 <= progress
+                    return (
+                      <div
+                        key={index}
+                        className={`w-1 rounded-full transition-all duration-150 ${
+                          isActive ? "bg-gradient-to-t from-purple-500 to-blue-400 shadow-sm" : "bg-gray-600/50"
+                        }`}
+                        style={{ height: `${height}%` }}
+                      />
+                    )
+                  })}
+                </div>
               </div>
             )}
 
             {/* Progress Bar */}
             <div className="space-y-2">
-              <Slider
-                value={[currentTime]}
-                max={audioDuration}
-                step={0.1}
-                onValueChange={handleSeek}
-                className="w-full"
-              />
-              <div className="flex justify-between text-xs text-gray-400">
+              <Slider value={[progress]} onValueChange={handleSeek} max={100} step={0.1} className="w-full" />
+              <div className="flex justify-between text-sm text-gray-400">
                 <span>{formatTime(currentTime)}</span>
                 <span>{formatTime(audioDuration)}</span>
               </div>
@@ -293,63 +280,82 @@ export function EnhancedAudioPlayer({
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <Button
-                  onClick={skipBackward}
+                  onClick={() => setIsShuffle(!isShuffle)}
                   size="sm"
                   variant="ghost"
-                  className="text-white hover:text-blue-400 hover:bg-gray-700"
+                  className={`text-white hover:bg-gray-700/50 ${isShuffle ? "text-blue-400" : "text-gray-400"}`}
                 >
+                  <Shuffle className="h-4 w-4" />
+                </Button>
+
+                <Button onClick={skipBackward} size="sm" variant="ghost" className="text-white hover:bg-gray-700/50">
                   <SkipBack className="h-4 w-4" />
                 </Button>
 
                 <Button
                   onClick={togglePlayPause}
-                  size="lg"
-                  className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white border-0 shadow-lg"
                   disabled={isLoading}
+                  className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white border-0 w-12 h-12 rounded-full shadow-lg"
                 >
-                  {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+                  {isLoading ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                  ) : isPlaying ? (
+                    <Pause className="h-5 w-5" />
+                  ) : (
+                    <Play className="h-5 w-5 ml-0.5" />
+                  )}
+                </Button>
+
+                <Button onClick={skipForward} size="sm" variant="ghost" className="text-white hover:bg-gray-700/50">
+                  <SkipForward className="h-4 w-4" />
                 </Button>
 
                 <Button
-                  onClick={skipForward}
+                  onClick={() => setIsRepeat(!isRepeat)}
                   size="sm"
                   variant="ghost"
-                  className="text-white hover:text-blue-400 hover:bg-gray-700"
+                  className={`text-white hover:bg-gray-700/50 ${isRepeat ? "text-blue-400" : "text-gray-400"}`}
                 >
-                  <SkipForward className="h-4 w-4" />
+                  <Repeat className="h-4 w-4" />
                 </Button>
               </div>
 
-              {/* Volume Control */}
               <div className="flex items-center space-x-2">
                 <Button
-                  onClick={toggleMute}
+                  onClick={() => setIsLiked(!isLiked)}
                   size="sm"
                   variant="ghost"
-                  className="text-white hover:text-blue-400 hover:bg-gray-700"
+                  className={`text-white hover:bg-gray-700/50 ${isLiked ? "text-red-400" : "text-gray-400"}`}
                 >
-                  {isMuted || volume === 0 ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+                  <Heart className={`h-4 w-4 ${isLiked ? "fill-current" : ""}`} />
                 </Button>
-                <Slider
-                  value={[isMuted ? 0 : volume]}
-                  max={1}
-                  step={0.1}
-                  onValueChange={handleVolumeChange}
-                  className="w-20"
-                />
+
+                <Button size="sm" variant="ghost" className="text-white hover:bg-gray-700/50">
+                  <Share2 className="h-4 w-4" />
+                </Button>
+
+                <Button size="sm" variant="ghost" className="text-white hover:bg-gray-700/50">
+                  <Download className="h-4 w-4" />
+                </Button>
+
+                <div className="flex items-center space-x-2 ml-4">
+                  <Button onClick={toggleMute} size="sm" variant="ghost" className="text-white hover:bg-gray-700/50">
+                    {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+                  </Button>
+                  <Slider
+                    value={[isMuted ? 0 : volume * 100]}
+                    onValueChange={handleVolumeChange}
+                    max={100}
+                    step={1}
+                    className="w-20"
+                  />
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        <audio
-          ref={audioRef}
-          src={src}
-          onTimeUpdate={handleTimeUpdate}
-          onLoadedMetadata={handleLoadedMetadata}
-          onEnded={() => setIsPlaying(false)}
-          crossOrigin="anonymous"
-        />
+        <audio ref={audioRef} src={src} preload="metadata" />
       </CardContent>
     </Card>
   )
