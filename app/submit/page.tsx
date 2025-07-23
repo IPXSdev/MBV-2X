@@ -12,7 +12,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Progress } from "@/components/ui/progress"
-import { Upload, Tag, FileAudio, CheckCircle, AlertCircle, Zap, Crown, Star, Clock } from "lucide-react"
+import {
+  Upload,
+  Tag,
+  FileAudio,
+  CheckCircle,
+  AlertCircle,
+  Zap,
+  Crown,
+  Star,
+  Clock,
+  ArrowLeft,
+  Music,
+  Sparkles,
+} from "lucide-react"
 
 interface SubmissionUser {
   id: string
@@ -259,191 +272,321 @@ export default function SubmitPage() {
   }, [])
 
   if (loading) {
-    return <div>Loading...</div>
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-4"></div>
+          <p className="text-white">Loading submission form...</p>
+        </div>
+      </div>
+    )
   }
 
   if (!user) {
-    return <div>Not authorized</div>
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-center text-white">
+          <AlertCircle className="h-16 w-16 text-red-400 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold mb-2">Access Denied</h2>
+          <p className="text-gray-400">You need to be logged in to submit music.</p>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div className="container mx-auto py-10">
-      <Card className="max-w-3xl mx-auto">
-        <CardHeader>
-          <CardTitle className="text-2xl">Submit Your Music</CardTitle>
-          <CardDescription>Share your latest track with the world.</CardDescription>
-        </CardHeader>
-        <CardContent>
+    <div className="min-h-screen bg-gray-900 text-white">
+      <div className="max-w-4xl mx-auto p-6">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center space-x-4">
+            <Button
+              variant="outline"
+              onClick={() => router.back()}
+              className="border-gray-600 text-white hover:bg-gray-800 bg-transparent"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back
+            </Button>
+            <div>
+              <h1 className="text-3xl font-bold flex items-center">
+                <Music className="h-8 w-8 mr-3 text-purple-400" />
+                Submit Your Music
+              </h1>
+              <p className="text-gray-400">Share your latest track with Grammy-nominated producers</p>
+            </div>
+          </div>
+
           {user && (
-            <div className="mb-4">
-              <Badge variant="secondary">
-                <Zap className="mr-2 h-4 w-4" />
-                {user.tier === "creator" ? (
-                  <>
-                    <Crown className="mr-2 h-4 w-4" />
-                    Creator Tier: {user.submission_credits} Credits Remaining
-                  </>
-                ) : user.tier === "pro" ? (
-                  <>
-                    <Star className="mr-2 h-4 w-4" />
-                    Pro Tier: {user.submission_credits} Credits Remaining
-                  </>
-                ) : (
-                  <>
-                    <Clock className="mr-2 h-4 w-4" />
-                    Indie Tier: {user.submission_credits} Credits Remaining
-                  </>
-                )}
-              </Badge>
+            <div className="text-right">
+              <div className="flex items-center space-x-2 mb-1">
+                {user.tier === "creator" && <Clock className="h-4 w-4 text-orange-400" />}
+                {user.tier === "indie" && <Star className="h-4 w-4 text-blue-400" />}
+                {user.tier === "pro" && <Crown className="h-4 w-4 text-purple-400" />}
+                <span className="text-sm text-gray-400 capitalize">{user.tier} Plan</span>
+              </div>
+              <div className="flex items-center space-x-1">
+                <Zap className="h-4 w-4 text-orange-400" />
+                <span className="text-white font-medium">
+                  {user.submission_credits === 999999 ? "∞" : user.submission_credits} credits remaining
+                </span>
+              </div>
             </div>
           )}
+        </div>
 
-          {success && (
-            <Alert>
-              <CheckCircle className="h-4 w-4" />
-              <AlertDescription>Track submitted successfully!</AlertDescription>
-            </Alert>
-          )}
+        {/* Success Alert */}
+        {success && (
+          <Alert className="mb-6 bg-green-500/20 border-green-500/30 text-green-300">
+            <CheckCircle className="h-4 w-4" />
+            <AlertDescription className="text-green-300">
+              🎉 Track submitted successfully! Our team will review it and provide feedback within 48-72 hours.
+            </AlertDescription>
+          </Alert>
+        )}
 
-          {errors.submit && (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{errors.submit}</AlertDescription>
-            </Alert>
-          )}
+        {/* Error Alert */}
+        {errors.submit && (
+          <Alert variant="destructive" className="mb-6 bg-red-500/20 border-red-500/30">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription className="text-red-300">{errors.submit}</AlertDescription>
+          </Alert>
+        )}
 
-          <form onSubmit={handleSubmit}>
-            <div className="grid gap-4">
-              <div>
-                <Label htmlFor="title">Title</Label>
-                <Input type="text" id="title" name="title" value={formData.title} onChange={handleInputChange} />
-                {errors.title && <p className="text-red-500">{errors.title}</p>}
+        {/* Main Form Card */}
+        <Card className="bg-gray-800 border-gray-700">
+          <CardHeader className="text-center pb-6">
+            <div className="flex items-center justify-center mb-4">
+              <div className="p-3 bg-gradient-to-r from-purple-500/20 to-blue-500/20 rounded-full">
+                <Sparkles className="h-8 w-8 text-purple-400" />
               </div>
-              <div>
-                <Label htmlFor="artistName">Artist Name</Label>
-                <Input
-                  type="text"
-                  id="artistName"
-                  name="artistName"
-                  value={formData.artistName}
-                  onChange={handleInputChange}
-                />
-                {errors.artistName && <p className="text-red-500">{errors.artistName}</p>}
+            </div>
+            <CardTitle className="text-2xl text-white">Ready to Get Professional Feedback?</CardTitle>
+            <CardDescription className="text-gray-400 text-lg">
+              Submit your track and get expert review from industry professionals
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="space-y-6">
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Track Information */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-white flex items-center">
+                  <Music className="h-5 w-5 mr-2 text-purple-400" />
+                  Track Information
+                </h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="title" className="text-white">
+                      Track Title *
+                    </Label>
+                    <Input
+                      type="text"
+                      id="title"
+                      name="title"
+                      value={formData.title}
+                      onChange={handleInputChange}
+                      className="bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-purple-500"
+                      placeholder="Enter your track title"
+                    />
+                    {errors.title && <p className="text-red-400 text-sm mt-1">{errors.title}</p>}
+                  </div>
+
+                  <div>
+                    <Label htmlFor="artistName" className="text-white">
+                      Artist Name *
+                    </Label>
+                    <Input
+                      type="text"
+                      id="artistName"
+                      name="artistName"
+                      value={formData.artistName}
+                      onChange={handleInputChange}
+                      className="bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-purple-500"
+                      placeholder="Enter artist name"
+                    />
+                    {errors.artistName && <p className="text-red-400 text-sm mt-1">{errors.artistName}</p>}
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="genre" className="text-white">
+                    Genre *
+                  </Label>
+                  <Select onValueChange={handleGenreChange}>
+                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white focus:border-purple-500">
+                      <SelectValue placeholder="Select your track's genre" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-gray-700 border-gray-600">
+                      {genres.map((genre) => (
+                        <SelectItem key={genre} value={genre} className="text-white hover:bg-gray-600">
+                          {genre}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.genre && <p className="text-red-400 text-sm mt-1">{errors.genre}</p>}
+                </div>
+
+                <div>
+                  <Label htmlFor="description" className="text-white">
+                    Description
+                  </Label>
+                  <Textarea
+                    id="description"
+                    name="description"
+                    value={formData.description}
+                    onChange={handleInputChange}
+                    className="bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-purple-500"
+                    placeholder="Tell us about your track, inspiration, or what feedback you're looking for..."
+                    rows={3}
+                  />
+                </div>
               </div>
-              <div>
-                <Label htmlFor="genre">Genre</Label>
-                <Select onValueChange={handleGenreChange}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select a genre" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {genres.map((genre) => (
-                      <SelectItem key={genre} value={genre}>
-                        {genre}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {errors.genre && <p className="text-red-500">{errors.genre}</p>}
-              </div>
-              <div>
-                <Label htmlFor="description">Description</Label>
-                <Textarea
-                  id="description"
-                  name="description"
-                  value={formData.description}
-                  onChange={handleInputChange}
-                />
-              </div>
-              <div>
-                <Label>Mood Tags</Label>
+
+              {/* Mood Tags */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-white flex items-center">
+                  <Tag className="h-5 w-5 mr-2 text-purple-400" />
+                  Mood Tags
+                </h3>
+                <p className="text-gray-400 text-sm">Select tags that best describe the mood of your track</p>
                 <div className="flex flex-wrap gap-2">
                   {moodTags.map((tag) => (
                     <Badge
                       key={tag}
-                      variant={selectedMoodTags.includes(tag) ? "secondary" : "outline"}
+                      variant={selectedMoodTags.includes(tag) ? "default" : "outline"}
                       onClick={() => toggleMoodTag(tag)}
-                      className="cursor-pointer"
+                      className={`cursor-pointer transition-all ${
+                        selectedMoodTags.includes(tag)
+                          ? "bg-gradient-to-r from-purple-500 to-blue-500 text-white border-transparent hover:from-purple-600 hover:to-blue-600"
+                          : "border-gray-600 text-gray-300 hover:border-purple-500 hover:text-purple-300"
+                      }`}
                     >
-                      <Tag className="mr-2 h-4 w-4" />
                       {tag}
                     </Badge>
                   ))}
                 </div>
               </div>
-              <div>
-                <Label htmlFor="audio">
-                  Audio File
-                  {selectedFile && (
-                    <div className="mt-2 flex items-center space-x-2">
-                      <FileAudio className="h-4 w-4 text-gray-500" />
-                      <span>{selectedFile.name}</span>
-                      {audioDuration && (
-                        <span>
-                          ({Math.floor(audioDuration / 60)}:{String(Math.floor(audioDuration % 60)).padStart(2, "0")})
-                        </span>
-                      )}
-                      {selectedFile && (
-                        <button type="button" onClick={handlePlayPause} className="rounded-full p-1 hover:bg-gray-100">
-                          {isPlaying ? (
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              viewBox="0 0 24 24"
-                              fill="currentColor"
-                              className="h-4 w-4"
-                            >
-                              <path
-                                fillRule="evenodd"
-                                d="M6.75 5.25a1.5 1.5 0 013 0v13.5a1.5 1.5 0 01-3 0V5.25zm7.5 0a1.5 1.5 0 013 0v13.5a1.5 1.5 0 01-3 0V5.25z"
-                                clipRule="evenodd"
-                              />
-                            </svg>
-                          ) : (
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              viewBox="0 0 24 24"
-                              fill="currentColor"
-                              className="h-4 w-4"
-                            >
-                              <path
-                                fillRule="evenodd"
-                                d="M4.5 5.653c0-1.426 1.529-2.333 2.779-.966l11.208 6.59a1.5 1.5 0 010 2.634l-11.208 6.59c-1.25.867-2.779-.039-2.779-1.426V5.653z"
-                                clipRule="evenodd"
-                              />
-                            </svg>
-                          )}
-                        </button>
+
+              {/* File Upload */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-white flex items-center">
+                  <FileAudio className="h-5 w-5 mr-2 text-purple-400" />
+                  Audio File *
+                </h3>
+
+                <div className="border-2 border-dashed border-gray-600 rounded-lg p-6 text-center hover:border-purple-500 transition-colors">
+                  <Input
+                    type="file"
+                    id="audio"
+                    name="audio"
+                    accept="audio/*"
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+                  <Label htmlFor="audio" className="cursor-pointer">
+                    <div className="space-y-2">
+                      <Upload className="h-12 w-12 text-gray-400 mx-auto" />
+                      <div className="text-white font-medium">
+                        {selectedFile ? selectedFile.name : "Click to upload your audio file"}
+                      </div>
+                      <div className="text-gray-400 text-sm">Supported formats: MP3, WAV, FLAC (Max 50MB)</div>
+                      {selectedFile && audioDuration && (
+                        <div className="text-purple-400 text-sm">
+                          Duration: {Math.floor(audioDuration / 60)}:
+                          {String(Math.floor(audioDuration % 60)).padStart(2, "0")}
+                        </div>
                       )}
                     </div>
-                  )}
-                  <audio ref={audioRef} src={selectedFile ? URL.createObjectURL(selectedFile) : null} />
-                </Label>
-                <Input type="file" id="audio" name="audio" accept="audio/*" onChange={handleFileChange} />
-                {errors.file && <p className="text-red-500">{errors.file}</p>}
+                  </Label>
+                </div>
+
+                {selectedFile && (
+                  <div className="flex items-center justify-center space-x-4 p-4 bg-gray-700/50 rounded-lg">
+                    <FileAudio className="h-5 w-5 text-purple-400" />
+                    <span className="text-white">{selectedFile.name}</span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handlePlayPause}
+                      className="border-gray-600 text-white hover:bg-gray-600 bg-transparent"
+                    >
+                      {isPlaying ? "Pause" : "Preview"}
+                    </Button>
+                    <audio ref={audioRef} src={selectedFile ? URL.createObjectURL(selectedFile) : undefined} />
+                  </div>
+                )}
+
+                {errors.file && <p className="text-red-400 text-sm">{errors.file}</p>}
               </div>
+
+              {/* Upload Progress */}
               {uploadProgress > 0 && (
-                <div>
-                  <Label>Upload Progress</Label>
-                  <Progress value={uploadProgress} />
+                <div className="space-y-2">
+                  <Label className="text-white">Upload Progress</Label>
+                  <Progress value={uploadProgress} className="bg-gray-700" />
+                  <p className="text-sm text-gray-400 text-center">{uploadProgress}% uploaded</p>
                 </div>
               )}
-              <Button disabled={submitting}>
-                {submitting ? (
-                  <>
-                    Submitting...
-                    <Upload className="ml-2 h-4 w-4 animate-spin" />
-                  </>
-                ) : (
-                  <>
-                    Submit
-                    <Upload className="ml-2 h-4 w-4" />
-                  </>
-                )}
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+
+              {/* Submit Button */}
+              <div className="pt-6">
+                <Button
+                  type="submit"
+                  disabled={submitting}
+                  className="w-full bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white font-semibold py-3 text-lg"
+                >
+                  {submitting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Submitting Your Track...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="mr-2 h-5 w-5" />
+                      Submit for Professional Review
+                    </>
+                  )}
+                </Button>
+
+                <p className="text-center text-gray-400 text-sm mt-3">
+                  You'll receive expert feedback within 48-72 hours
+                </p>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+
+        {/* Info Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
+          <Card className="bg-gray-800 border-gray-700">
+            <CardContent className="p-6 text-center">
+              <CheckCircle className="h-8 w-8 text-green-400 mx-auto mb-3" />
+              <h3 className="font-semibold text-white mb-2">Professional Review</h3>
+              <p className="text-gray-400 text-sm">Get detailed feedback from Grammy-nominated producers</p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gray-800 border-gray-700">
+            <CardContent className="p-6 text-center">
+              <Clock className="h-8 w-8 text-blue-400 mx-auto mb-3" />
+              <h3 className="font-semibold text-white mb-2">Quick Turnaround</h3>
+              <p className="text-gray-400 text-sm">Receive feedback within 48-72 hours</p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gray-800 border-gray-700">
+            <CardContent className="p-6 text-center">
+              <Star className="h-8 w-8 text-purple-400 mx-auto mb-3" />
+              <h3 className="font-semibold text-white mb-2">Industry Insights</h3>
+              <p className="text-gray-400 text-sm">Learn from professionals who've worked with top artists</p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   )
 }
