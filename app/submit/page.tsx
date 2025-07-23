@@ -151,9 +151,7 @@ export default function SubmitPage() {
 
     try {
       console.log("Checking bucket status...")
-      const response = await fetch("/api/debug/bucket-status")
-
-      console.log("Bucket status response:", response.status, response.statusText)
+      const response = await fetch("/api/debug/simple-bucket-check")
 
       if (!response.ok) {
         const errorText = await response.text()
@@ -164,7 +162,7 @@ export default function SubmitPage() {
       const data = await response.json()
       console.log("Bucket status data:", data)
 
-      if (data.success && data.audioSubmissionsBucket) {
+      if (data.success && data.bucketExists) {
         setBucketStatus({
           exists: true,
           checking: false,
@@ -453,7 +451,7 @@ export default function SubmitPage() {
                   <p>
                     <strong>Error:</strong> {bucketStatus.error}
                   </p>
-                  <p>Please run the bucket creation script or contact support.</p>
+                  <p>Please run the manual bucket setup script in your Supabase SQL editor.</p>
                   {bucketStatus.details && (
                     <details className="mt-2">
                       <summary className="cursor-pointer text-red-200 hover:text-red-100">
@@ -476,7 +474,7 @@ export default function SubmitPage() {
                     Retry Check
                   </Button>
                   <Button
-                    onClick={() => window.open("/api/debug/supabase-test", "_blank")}
+                    onClick={() => window.open("/api/debug/simple-bucket-check", "_blank")}
                     size="sm"
                     variant="outline"
                     className="border-red-400 text-red-300 hover:bg-red-500/20 bg-transparent"
@@ -699,7 +697,7 @@ export default function SubmitPage() {
                 <p className="text-center text-gray-400 text-sm mt-3">
                   {bucketStatus.exists
                     ? "You'll receive expert feedback within 48-72 hours"
-                    : "Please configure storage before submitting"}
+                    : "Please run the manual bucket setup script in Supabase"}
                 </p>
               </div>
             </form>
