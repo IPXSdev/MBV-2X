@@ -162,7 +162,7 @@ export default function SubmitPage() {
       const data = await response.json()
       console.log("Bucket status data:", data)
 
-      if (data.success && data.bucketExists) {
+      if (data.success && data.uploadTest?.success) {
         setBucketStatus({
           exists: true,
           checking: false,
@@ -173,7 +173,7 @@ export default function SubmitPage() {
         setBucketStatus({
           exists: false,
           checking: false,
-          error: data.error || "Audio submissions bucket not found",
+          error: data.error || "Audio submissions bucket not functional",
           details: data,
         })
       }
@@ -256,7 +256,7 @@ export default function SubmitPage() {
 
     if (!bucketStatus.exists) {
       setErrors({
-        submit: "Storage bucket is not configured. Please contact support or run the bucket creation script.",
+        submit: "Storage bucket is not configured. Please contact support or refresh the page.",
       })
       return
     }
@@ -451,7 +451,7 @@ export default function SubmitPage() {
                   <p>
                     <strong>Error:</strong> {bucketStatus.error}
                   </p>
-                  <p>Please run the manual bucket setup script in your Supabase SQL editor.</p>
+                  <p>Please refresh the page or contact support if the issue persists.</p>
                   {bucketStatus.details && (
                     <details className="mt-2">
                       <summary className="cursor-pointer text-red-200 hover:text-red-100">
@@ -697,7 +697,7 @@ export default function SubmitPage() {
                 <p className="text-center text-gray-400 text-sm mt-3">
                   {bucketStatus.exists
                     ? "You'll receive expert feedback within 48-72 hours"
-                    : "Please run the manual bucket setup script in Supabase"}
+                    : "Please refresh the page to retry bucket configuration"}
                 </p>
               </div>
             </form>
