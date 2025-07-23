@@ -1,5 +1,5 @@
 "use client"
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import type React from "react"
 
 import { useRouter } from "next/navigation"
@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Progress } from "@/components/ui/progress"
+import { EnhancedAudioPlayer } from "@/components/ui/enhanced-audio-player"
 import {
   Upload,
   Tag,
@@ -101,10 +102,8 @@ export default function SubmitPage() {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [success, setSuccess] = useState(false)
   const router = useRouter()
-  const audioRef = useRef<HTMLAudioElement | null>(null)
   const [audioDuration, setAudioDuration] = useState<number | null>(null)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [currentlyPlaying, setCurrentlyPlaying] = useState<string | null>(null)
+  const [audioUrl, setAudioUrl] = useState<string | null>(null)
 
   useEffect(() => {
     checkAuth()
@@ -145,14 +144,16 @@ export default function SubmitPage() {
     if (file) {
       setSelectedFile(file)
 
+      // Create URL for audio preview
+      const url = URL.createObjectURL(file)
+      setAudioUrl(url)
+
       // Create audio element to get duration
       const audio = document.createElement("audio")
-      const url = URL.createObjectURL(file)
       audio.src = url
 
       audio.addEventListener("loadedmetadata", () => {
         setAudioDuration(audio.duration)
-        URL.revokeObjectURL(url)
       })
 
       audio.addEventListener("error", () => {
@@ -281,6 +282,7 @@ export default function SubmitPage() {
         setSelectedMoodTags([])
         setErrors({})
         setAudioDuration(null)
+        setAudioUrl(null)
 
         // Reset file input
         const fileInput = document.getElementById("audio") as HTMLInputElement
@@ -300,42 +302,14 @@ export default function SubmitPage() {
     }
   }
 
-  const handlePlayPause = () => {
-    if (!selectedFile) return
-
-    if (audioRef.current) {
-      if (isPlaying) {
-        audioRef.current.pause()
-        setIsPlaying(false)
-      } else {
-        audioRef.current.play()
-        setIsPlaying(true)
-      }
-    } else {
-      // Create new audio element
-      const audio = new Audio(URL.createObjectURL(selectedFile))
-      audioRef.current = audio
-
-      audio.addEventListener("ended", () => {
-        setIsPlaying(false)
-        setCurrentlyPlaying(null)
-      })
-
-      audio.play()
-      setIsPlaying(true)
-    }
-  }
-
+  // Cleanup audio URL on unmount
   useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.addEventListener("ended", () => setIsPlaying(false))
-    }
     return () => {
-      if (audioRef.current) {
-        audioRef.current.removeEventListener("ended", () => setIsPlaying(false))
+      if (audioUrl) {
+        URL.revokeObjectURL(audioUrl)
       }
     }
-  }, [])
+  }, [audioUrl])
 
   if (loading) {
     return (
@@ -569,20 +543,16 @@ export default function SubmitPage() {
                   </Label>
                 </div>
 
-                {selectedFile && (
-                  <div className="flex items-center justify-center space-x-4 p-4 bg-gray-700/50 rounded-lg">
-                    <FileAudio className="h-5 w-5 text-purple-400" />
-                    <span className="text-white">{selectedFile.name}</span>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handlePlayPause}
-                      className="border-gray-600 text-white hover:bg-gray-600 bg-transparent"
-                    >
-                      {isPlaying ? "Pause" : "Preview"}
-                    </Button>
-                    <audio ref={audioRef} src={selectedFile ? URL.createObjectURL(selectedFile) : undefined} />
+                {/* Enhanced Audio Player */}
+                {selectedFile && audioUrl && (
+                  <div className="mt-4">
+                    <EnhancedAudioPlayer
+                      src={audioUrl}
+                      title={formData.title || selectedFile.name}
+                      artist={formData.artistName || "Unknown Artist"}
+                      duration={audioDuration || undefined}
+                      showWaveform={true}
+                    />
                   </div>
                 )}
 

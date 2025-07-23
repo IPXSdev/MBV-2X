@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -8,19 +8,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
-import {
-  FileAudio,
-  Play,
-  Pause,
-  Star,
-  Download,
-  CheckCircle,
-  XCircle,
-  Clock,
-  User,
-  Calendar,
-  Music,
-} from "lucide-react"
+import { EnhancedAudioPlayer } from "@/components/ui/enhanced-audio-player"
+import { FileAudio, Star, CheckCircle, XCircle, Clock, User, Calendar, Music } from "lucide-react"
 import { formatRelativeTime, getStatusBadgeColor } from "@/lib/utils"
 
 interface Submission {
@@ -67,7 +56,6 @@ export function AdminSubmissions() {
     totalPages: 0,
   })
   const [currentlyPlaying, setCurrentlyPlaying] = useState<string | null>(null)
-  const [isPlaying, setIsPlaying] = useState(false)
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null)
   const [reviewDialogOpen, setReviewDialogOpen] = useState(false)
   const [reviewData, setReviewData] = useState({
@@ -77,7 +65,6 @@ export function AdminSubmissions() {
     tags: [] as string[],
   })
   const [submitting, setSubmitting] = useState(false)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
 
   useEffect(() => {
     loadSubmissions()
@@ -108,32 +95,6 @@ export function AdminSubmissions() {
       setError(error instanceof Error ? error.message : "Failed to load submissions")
     } finally {
       setLoading(false)
-    }
-  }
-
-  const handlePlayAudio = (url: string, submissionId: string) => {
-    if (currentlyPlaying === submissionId && isPlaying) {
-      if (audioRef.current) {
-        audioRef.current.pause()
-      }
-      setIsPlaying(false)
-      setCurrentlyPlaying(null)
-    } else {
-      if (audioRef.current) {
-        audioRef.current.pause()
-      }
-
-      const audio = new Audio(url)
-      audio.play()
-      audioRef.current = audio
-
-      setCurrentlyPlaying(submissionId)
-      setIsPlaying(true)
-
-      audio.addEventListener("ended", () => {
-        setIsPlaying(false)
-        setCurrentlyPlaying(null)
-      })
     }
   }
 
@@ -206,16 +167,6 @@ export function AdminSubmissions() {
       tags: prev.tags.includes(tag) ? prev.tags.filter((t) => t !== tag) : [...prev.tags, tag],
     }))
   }
-
-  useEffect(() => {
-    // Cleanup audio on unmount
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.pause()
-        audioRef.current = null
-      }
-    }
-  }, [])
 
   if (error) {
     return (
@@ -319,77 +270,61 @@ export function AdminSubmissions() {
                 {submissions.map((submission) => (
                   <div
                     key={submission.id}
-                    className="flex items-center space-x-4 p-4 bg-gray-700/50 rounded-lg hover:bg-gray-700/70 transition-colors duration-200"
+                    className="p-4 bg-gray-700/50 rounded-lg hover:bg-gray-700/70 transition-colors duration-200"
                   >
-                    <div className="flex-shrink-0">
-                      <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-500 rounded-lg flex items-center justify-center">
-                        <FileAudio className="h-6 w-6 text-white" />
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center space-x-4">
+                        <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <FileAudio className="h-6 w-6 text-white" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="text-white font-medium truncate">{submission.track_title}</h4>
+                          <p className="text-gray-400 text-sm">by {submission.artist_name}</p>
+                          <div className="flex items-center space-x-2 mt-1">
+                            <Badge className={`${getStatusBadgeColor(submission.status)} text-white text-xs`}>
+                              {submission.status.replace("_", " ")}
+                            </Badge>
+                            <span className="text-gray-500 text-xs">{formatRelativeTime(submission.created_at)}</span>
+                            {submission.users && (
+                              <Badge variant="outline" className="text-xs border-gray-500 text-gray-300">
+                                {submission.users.tier}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="text-white font-medium truncate">{submission.track_title}</h4>
-                      <p className="text-gray-400 text-sm">by {submission.artist_name}</p>
-                      {submission.duration && (
-                        <span className="text-gray-500 text-xs">
-                          {Math.floor(submission.duration / 60)}:
-                          {String(Math.floor(submission.duration % 60)).padStart(2, "0")}
-                        </span>
-                      )}
-                      <div className="flex items-center space-x-2 mt-1">
-                        <Badge className={`${getStatusBadgeColor(submission.status)} text-white text-xs`}>
-                          {submission.status.replace("_", " ")}
-                        </Badge>
-                        <span className="text-gray-500 text-xs">{formatRelativeTime(submission.created_at)}</span>
-                        {submission.users && (
+                      <div className="flex items-center space-x-2">
+                        {submission.admin_rating ? (
+                          <div className="flex items-center space-x-1">
+                            <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                            <span className="text-yellow-400 text-sm font-medium">{submission.admin_rating}</span>
+                          </div>
+                        ) : (
                           <Badge variant="outline" className="text-xs border-gray-500 text-gray-300">
-                            {submission.users.tier}
+                            Unrated
                           </Badge>
                         )}
+                        <Button
+                          size="sm"
+                          onClick={() => openReviewDialog(submission)}
+                          className="bg-purple-600 hover:bg-purple-700"
+                        >
+                          Review
+                        </Button>
                       </div>
                     </div>
-                    <div className="flex items-center space-x-2">
-                      {submission.admin_rating ? (
-                        <div className="flex items-center space-x-1">
-                          <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                          <span className="text-yellow-400 text-sm font-medium">{submission.admin_rating}</span>
-                        </div>
-                      ) : (
-                        <Badge variant="outline" className="text-xs border-gray-500 text-gray-300">
-                          Unrated
-                        </Badge>
-                      )}
-                      {submission.file_url && (
-                        <div className="flex space-x-1">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handlePlayAudio(submission.file_url!, submission.id)}
-                            className="border-gray-600 bg-transparent hover:bg-gray-600"
-                          >
-                            {currentlyPlaying === submission.id && isPlaying ? (
-                              <Pause className="h-3 w-3" />
-                            ) : (
-                              <Play className="h-3 w-3" />
-                            )}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => window.open(submission.file_url, "_blank")}
-                            className="border-gray-600 bg-transparent hover:bg-gray-600"
-                          >
-                            <Download className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      )}
-                      <Button
-                        size="sm"
-                        onClick={() => openReviewDialog(submission)}
-                        className="bg-purple-600 hover:bg-purple-700"
-                      >
-                        Review
-                      </Button>
-                    </div>
+
+                    {/* Enhanced Audio Player */}
+                    {submission.file_url && (
+                      <EnhancedAudioPlayer
+                        src={submission.file_url}
+                        title={submission.track_title}
+                        artist={submission.artist_name}
+                        duration={submission.duration}
+                        compact={true}
+                        showWaveform={true}
+                      />
+                    )}
                   </div>
                 ))}
               </div>
@@ -454,17 +389,25 @@ export function AdminSubmissions() {
 
       {/* Review Dialog */}
       <Dialog open={reviewDialogOpen} onOpenChange={setReviewDialogOpen}>
-        <DialogContent className="bg-gray-800 border-gray-700 text-white max-w-3xl">
+        <DialogContent className="bg-gray-800 border-gray-700 text-white max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-white text-xl">Review Submission</DialogTitle>
           </DialogHeader>
           {selectedSubmission && (
             <div className="space-y-6">
+              {/* Enhanced Audio Player in Dialog */}
+              {selectedSubmission.file_url && (
+                <EnhancedAudioPlayer
+                  src={selectedSubmission.file_url}
+                  title={selectedSubmission.track_title}
+                  artist={selectedSubmission.artist_name}
+                  duration={selectedSubmission.duration}
+                  showWaveform={true}
+                />
+              )}
+
               <div className="flex flex-col md:flex-row gap-6">
                 <div className="md:w-1/3 space-y-4">
-                  <div className="bg-gradient-to-br from-purple-500 to-blue-500 rounded-lg aspect-square flex items-center justify-center">
-                    <FileAudio className="h-16 w-16 text-white" />
-                  </div>
                   <div>
                     <h3 className="text-white font-medium text-lg">{selectedSubmission.track_title}</h3>
                     <p className="text-gray-400">by {selectedSubmission.artist_name}</p>
@@ -491,31 +434,10 @@ export function AdminSubmissions() {
                         <span className="text-gray-300 text-sm">{selectedSubmission.genre}</span>
                       </div>
                     )}
-                    {selectedSubmission.file_url && (
-                      <div className="flex space-x-2 mt-4">
-                        <Button
-                          onClick={() => handlePlayAudio(selectedSubmission.file_url!, selectedSubmission.id)}
-                          className="flex-1 bg-purple-600 hover:bg-purple-700"
-                        >
-                          {currentlyPlaying === selectedSubmission.id && isPlaying ? (
-                            <>
-                              <Pause className="h-4 w-4 mr-2" />
-                              Pause
-                            </>
-                          ) : (
-                            <>
-                              <Play className="h-4 w-4 mr-2" />
-                              Play Track
-                            </>
-                          )}
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={() => window.open(selectedSubmission.file_url, "_blank")}
-                          className="border-gray-600"
-                        >
-                          <Download className="h-4 w-4" />
-                        </Button>
+                    {selectedSubmission.description && (
+                      <div className="mt-4 p-3 bg-gray-700/50 rounded-lg">
+                        <h4 className="text-white font-medium text-sm mb-2">Artist Notes:</h4>
+                        <p className="text-gray-300 text-sm">{selectedSubmission.description}</p>
                       </div>
                     )}
                   </div>

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { EnhancedAudioPlayer } from "@/components/ui/enhanced-audio-player"
 import {
   Music,
   Plus,
@@ -20,23 +21,22 @@ import {
   Crown,
   Zap,
   ArrowLeft,
-  Play,
-  Pause,
 } from "lucide-react"
 
 interface Submission {
   id: string
-  title: string
+  track_title: string
   artist_name: string
   genre: string
-  status: "pending" | "approved" | "rejected" | "under_review"
+  status: "pending" | "approved" | "rejected" | "in_review"
   created_at: string
   updated_at: string
-  feedback?: string
+  admin_feedback?: string
   mood_tags: string[]
   file_url?: string
   duration?: number
   file_size?: number
+  admin_rating?: number
 }
 
 interface User {
@@ -49,14 +49,14 @@ interface User {
 
 const statusColors = {
   pending: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
-  under_review: "bg-blue-500/20 text-blue-300 border-blue-500/30",
+  in_review: "bg-blue-500/20 text-blue-300 border-blue-500/30",
   approved: "bg-green-500/20 text-green-300 border-green-500/30",
   rejected: "bg-red-500/20 text-red-300 border-red-500/30",
 }
 
 const statusIcons = {
   pending: Clock,
-  under_review: Eye,
+  in_review: Eye,
   approved: CheckCircle,
   rejected: XCircle,
 }
@@ -68,7 +68,6 @@ export default function SubmissionsPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [genreFilter, setGenreFilter] = useState<string>("all")
-  const [playingId, setPlayingId] = useState<string | null>(null)
   const router = useRouter()
 
   useEffect(() => {
@@ -102,7 +101,7 @@ export default function SubmissionsPage() {
 
   const filteredSubmissions = submissions.filter((submission) => {
     const matchesSearch =
-      submission.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      submission.track_title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       submission.artist_name.toLowerCase().includes(searchTerm.toLowerCase())
 
     const matchesStatus = statusFilter === "all" || submission.status === statusFilter
@@ -115,7 +114,7 @@ export default function SubmissionsPage() {
     return {
       all: submissions.length,
       pending: submissions.filter((s) => s.status === "pending").length,
-      under_review: submissions.filter((s) => s.status === "under_review").length,
+      in_review: submissions.filter((s) => s.status === "in_review").length,
       approved: submissions.filter((s) => s.status === "approved").length,
       rejected: submissions.filter((s) => s.status === "rejected").length,
     }
@@ -137,14 +136,6 @@ export default function SubmissionsPage() {
 
   const formatFileSize = (bytes: number) => {
     return (bytes / (1024 * 1024)).toFixed(1) + " MB"
-  }
-
-  const handlePlayPause = (submissionId: string) => {
-    if (playingId === submissionId) {
-      setPlayingId(null)
-    } else {
-      setPlayingId(submissionId)
-    }
   }
 
   if (loading) {
@@ -223,8 +214,8 @@ export default function SubmissionsPage() {
           </Card>
           <Card className="bg-gray-800 border-gray-700">
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-blue-400">{statusCounts.under_review}</div>
-              <div className="text-sm text-gray-400">Under Review</div>
+              <div className="text-2xl font-bold text-blue-400">{statusCounts.in_review}</div>
+              <div className="text-sm text-gray-400">In Review</div>
             </CardContent>
           </Card>
           <Card className="bg-gray-800 border-gray-700">
@@ -268,8 +259,8 @@ export default function SubmissionsPage() {
                   <SelectItem value="pending" className="text-white hover:bg-gray-600">
                     Pending
                   </SelectItem>
-                  <SelectItem value="under_review" className="text-white hover:bg-gray-600">
-                    Under Review
+                  <SelectItem value="in_review" className="text-white hover:bg-gray-600">
+                    In Review
                   </SelectItem>
                   <SelectItem value="approved" className="text-white hover:bg-gray-600">
                     Approved
@@ -334,7 +325,7 @@ export default function SubmissionsPage() {
             </CardContent>
           </Card>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-6">
             {filteredSubmissions.map((submission) => {
               const StatusIcon = statusIcons[submission.status]
               return (
@@ -343,14 +334,20 @@ export default function SubmissionsPage() {
                   className="bg-gray-800 border-gray-700 hover:bg-gray-800/80 transition-colors"
                 >
                   <CardContent className="p-6">
-                    <div className="flex items-start justify-between">
+                    <div className="flex items-start justify-between mb-4">
                       <div className="flex-1">
                         <div className="flex items-center space-x-3 mb-2">
-                          <h3 className="text-xl font-semibold text-white">{submission.title}</h3>
+                          <h3 className="text-xl font-semibold text-white">{submission.track_title}</h3>
                           <Badge className={`${statusColors[submission.status]} border`}>
                             <StatusIcon className="h-3 w-3 mr-1" />
                             {submission.status.replace("_", " ").toUpperCase()}
                           </Badge>
+                          {submission.admin_rating && (
+                            <div className="flex items-center space-x-1">
+                              <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                              <span className="text-yellow-400 text-sm font-medium">{submission.admin_rating}/5</span>
+                            </div>
+                          )}
                         </div>
 
                         <div className="flex items-center space-x-4 text-sm text-gray-400 mb-3">
@@ -368,7 +365,7 @@ export default function SubmissionsPage() {
                         </div>
 
                         {submission.mood_tags.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mb-3">
+                          <div className="flex flex-wrap gap-1 mb-4">
                             {submission.mood_tags.map((tag, index) => (
                               <Badge key={index} variant="outline" className="text-xs border-gray-600 text-gray-300">
                                 {tag}
@@ -376,27 +373,9 @@ export default function SubmissionsPage() {
                             ))}
                           </div>
                         )}
-
-                        {submission.feedback && (
-                          <div className="mt-4 p-4 bg-gray-700/50 rounded-lg">
-                            <h4 className="text-sm font-medium text-white mb-2">Feedback:</h4>
-                            <p className="text-gray-300 text-sm">{submission.feedback}</p>
-                          </div>
-                        )}
                       </div>
 
                       <div className="flex items-center space-x-2 ml-4">
-                        {submission.file_url && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handlePlayPause(submission.id)}
-                            className="border-gray-600 text-white hover:bg-gray-700 bg-transparent"
-                          >
-                            {playingId === submission.id ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                          </Button>
-                        )}
-
                         {submission.file_url && (
                           <Button
                             variant="outline"
@@ -409,6 +388,27 @@ export default function SubmissionsPage() {
                         )}
                       </div>
                     </div>
+
+                    {/* Enhanced Audio Player */}
+                    {submission.file_url && (
+                      <div className="mb-4">
+                        <EnhancedAudioPlayer
+                          src={submission.file_url}
+                          title={submission.track_title}
+                          artist={submission.artist_name}
+                          duration={submission.duration}
+                          compact={true}
+                          showWaveform={true}
+                        />
+                      </div>
+                    )}
+
+                    {submission.admin_feedback && (
+                      <div className="mt-4 p-4 bg-gray-700/50 rounded-lg">
+                        <h4 className="text-sm font-medium text-white mb-2">Admin Feedback:</h4>
+                        <p className="text-gray-300 text-sm">{submission.admin_feedback}</p>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               )
