@@ -1,239 +1,185 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { Play, Pause, Volume2, VolumeX, SkipBack, SkipForward } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
+import { Card, CardContent } from "@/components/ui/card"
+import { Play, Pause, Volume2, VolumeX, SkipBack, SkipForward } from "lucide-react"
 import Image from "next/image"
 
 interface EnhancedAudioPlayerProps {
   src: string
-  title: string
-  artist: string
+  title?: string
+  artist?: string
   duration?: number
-  className?: string
   showWaveform?: boolean
-  compact?: boolean
+  mode?: "full" | "compact"
+  className?: string
 }
 
 export function EnhancedAudioPlayer({
   src,
-  title,
-  artist,
+  title = "Unknown Track",
+  artist = "Unknown Artist",
   duration,
-  className = "",
   showWaveform = true,
-  compact = false,
+  mode = "full",
+  className = "",
 }: EnhancedAudioPlayerProps) {
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [currentTime, setCurrentTime] = useState(0)
-  const [totalDuration, setTotalDuration] = useState(duration || 0)
-  const [volume, setVolume] = useState([75])
-  const [isMuted, setIsMuted] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const [waveformData, setWaveformData] = useState<number[]>([])
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
-
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const audioRef = useRef<HTMLAudioElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
   const animationRef = useRef<number>()
 
-  // Generate waveform data
-  const generateWaveform = async (audioBuffer: ArrayBuffer) => {
-    try {
-      setIsAnalyzing(true)
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
-      const decodedData = await audioContext.decodeAudioData(audioBuffer.slice(0))
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [audioDuration, setAudioDuration] = useState(duration || 0)
+  const [volume, setVolume] = useState(1)
+  const [isMuted, setIsMuted] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [audioContext, setAudioContext] = useState<AudioContext | null>(null)
+  const [analyser, setAnalyser] = useState<AnalyserNode | null>(null)
+  const [dataArray, setDataArray] = useState<Uint8Array | null>(null)
 
-      const samples = 100 // Number of bars in waveform
-      const blockSize = Math.floor(decodedData.length / samples)
-      const waveform: number[] = []
+  // Initialize audio context and analyser for waveform
+  useEffect(() => {
+    if (showWaveform && audioRef.current) {
+      const initAudioContext = async () => {
+        try {
+          const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+          const source = ctx.createMediaElementSource(audioRef.current!)
+          const analyserNode = ctx.createAnalyser()
 
-      for (let i = 0; i < samples; i++) {
-        const start = blockSize * i
-        let sum = 0
-        for (let j = 0; j < blockSize; j++) {
-          sum += Math.abs(decodedData.getChannelData(0)[start + j] || 0)
+          analyserNode.fftSize = 256
+          const bufferLength = analyserNode.frequencyBinCount
+          const dataArr = new Uint8Array(bufferLength)
+
+          source.connect(analyserNode)
+          analyserNode.connect(ctx.destination)
+
+          setAudioContext(ctx)
+          setAnalyser(analyserNode)
+          setDataArray(dataArr)
+        } catch (error) {
+          console.error("Error initializing audio context:", error)
         }
-        waveform.push(sum / blockSize)
       }
 
-      // Normalize waveform data
-      const max = Math.max(...waveform)
-      const normalizedWaveform = waveform.map((val) => (val / max) * 100)
-
-      setWaveformData(normalizedWaveform)
-      setTotalDuration(decodedData.duration)
-    } catch (error) {
-      console.error("Error generating waveform:", error)
-      // Fallback to random waveform for demo
-      const fallbackWaveform = Array.from({ length: 100 }, () => Math.random() * 100)
-      setWaveformData(fallbackWaveform)
-    } finally {
-      setIsAnalyzing(false)
+      initAudioContext()
     }
-  }
 
-  // Load audio and generate waveform
-  useEffect(() => {
-    if (src && showWaveform) {
-      fetch(src)
-        .then((response) => response.arrayBuffer())
-        .then(generateWaveform)
-        .catch(() => {
-          // Fallback waveform
-          const fallbackWaveform = Array.from({ length: 100 }, () => Math.random() * 100)
-          setWaveformData(fallbackWaveform)
-        })
+    return () => {
+      if (audioContext) {
+        audioContext.close()
+      }
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current)
+      }
     }
-  }, [src, showWaveform])
+  }, [showWaveform])
 
-  // Draw animated waveform
+  // Draw waveform visualization
   const drawWaveform = () => {
-    const canvas = canvasRef.current
-    if (!canvas || !waveformData.length) return
+    if (!canvasRef.current || !analyser || !dataArray) return
 
+    const canvas = canvasRef.current
     const ctx = canvas.getContext("2d")
     if (!ctx) return
 
-    const { width, height } = canvas
-    ctx.clearRect(0, 0, width, height)
+    analyser.getByteFrequencyData(dataArray)
 
-    const barWidth = width / waveformData.length
-    const progress = totalDuration > 0 ? currentTime / totalDuration : 0
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-    waveformData.forEach((amplitude, index) => {
-      const barHeight = (amplitude / 100) * height * 0.8
-      const x = index * barWidth
-      const y = (height - barHeight) / 2
+    const barWidth = (canvas.width / dataArray.length) * 2.5
+    let barHeight
+    let x = 0
 
-      // Determine bar color based on progress
-      const barProgress = index / waveformData.length
-      const isActive = barProgress <= progress
+    // Create gradient
+    const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height)
+    gradient.addColorStop(0, "#8b5cf6") // Purple
+    gradient.addColorStop(0.5, "#3b82f6") // Blue
+    gradient.addColorStop(1, "#06b6d4") // Cyan
 
-      if (isActive) {
-        // Active bars (played portion)
-        const gradient = ctx.createLinearGradient(0, 0, 0, height)
-        gradient.addColorStop(0, "#8b5cf6") // Purple
-        gradient.addColorStop(1, "#3b82f6") // Blue
-        ctx.fillStyle = gradient
-      } else {
-        // Inactive bars
-        ctx.fillStyle = isPlaying ? "#4b5563" : "#374151" // Gray
-      }
+    for (let i = 0; i < dataArray.length; i++) {
+      barHeight = (dataArray[i] / 255) * canvas.height * 0.8
 
-      // Add glow effect for active bars
-      if (isActive && isPlaying) {
-        ctx.shadowColor = "#8b5cf6"
-        ctx.shadowBlur = 4
-      } else {
-        ctx.shadowBlur = 0
-      }
+      ctx.fillStyle = gradient
+      ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight)
 
-      ctx.fillRect(x, y, Math.max(barWidth - 1, 1), barHeight)
-    })
+      x += barWidth + 1
+    }
+
+    if (isPlaying) {
+      animationRef.current = requestAnimationFrame(drawWaveform)
+    }
   }
 
-  // Animation loop
   useEffect(() => {
-    if (isPlaying) {
-      const animate = () => {
-        drawWaveform()
-        animationRef.current = requestAnimationFrame(animate)
-      }
-      animate()
-    } else {
+    if (isPlaying && showWaveform) {
       drawWaveform()
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current)
+    } else if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current)
+    }
+  }, [isPlaying, showWaveform, analyser, dataArray])
+
+  const togglePlayPause = async () => {
+    if (!audioRef.current) return
+
+    try {
+      if (audioContext && audioContext.state === "suspended") {
+        await audioContext.resume()
       }
-    }
 
-    return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current)
+      if (isPlaying) {
+        audioRef.current.pause()
+        setIsPlaying(false)
+      } else {
+        await audioRef.current.play()
+        setIsPlaying(true)
       }
-    }
-  }, [isPlaying, currentTime, waveformData])
-
-  // Audio event handlers
-  useEffect(() => {
-    const audio = audioRef.current
-    if (!audio) return
-
-    const handleTimeUpdate = () => setCurrentTime(audio.currentTime)
-    const handleDurationChange = () => setTotalDuration(audio.duration)
-    const handleEnded = () => setIsPlaying(false)
-    const handleLoadStart = () => setIsLoading(true)
-    const handleCanPlay = () => setIsLoading(false)
-
-    audio.addEventListener("timeupdate", handleTimeUpdate)
-    audio.addEventListener("durationchange", handleDurationChange)
-    audio.addEventListener("ended", handleEnded)
-    audio.addEventListener("loadstart", handleLoadStart)
-    audio.addEventListener("canplay", handleCanPlay)
-
-    return () => {
-      audio.removeEventListener("timeupdate", handleTimeUpdate)
-      audio.removeEventListener("durationchange", handleDurationChange)
-      audio.removeEventListener("ended", handleEnded)
-      audio.removeEventListener("loadstart", handleLoadStart)
-      audio.removeEventListener("canplay", handleCanPlay)
-    }
-  }, [src])
-
-  const togglePlayPause = () => {
-    const audio = audioRef.current
-    if (!audio) return
-
-    if (isPlaying) {
-      audio.pause()
-      setIsPlaying(false)
-    } else {
-      audio.play()
-      setIsPlaying(true)
+    } catch (error) {
+      console.error("Error playing audio:", error)
     }
   }
 
-  const handleProgressChange = (value: number[]) => {
-    const audio = audioRef.current
-    if (!audio) return
+  const handleTimeUpdate = () => {
+    if (audioRef.current) {
+      setCurrentTime(audioRef.current.currentTime)
+    }
+  }
 
-    const newTime = (value[0] / 100) * totalDuration
-    audio.currentTime = newTime
-    setCurrentTime(newTime)
+  const handleLoadedMetadata = () => {
+    if (audioRef.current) {
+      setAudioDuration(audioRef.current.duration)
+      setIsLoading(false)
+    }
+  }
+
+  const handleSeek = (value: number[]) => {
+    if (audioRef.current) {
+      audioRef.current.currentTime = value[0]
+      setCurrentTime(value[0])
+    }
   }
 
   const handleVolumeChange = (value: number[]) => {
-    const audio = audioRef.current
-    if (!audio) return
-
     const newVolume = value[0]
-    audio.volume = newVolume / 100
-    setVolume([newVolume])
+    setVolume(newVolume)
+    if (audioRef.current) {
+      audioRef.current.volume = newVolume
+    }
     setIsMuted(newVolume === 0)
   }
 
   const toggleMute = () => {
-    const audio = audioRef.current
-    if (!audio) return
-
-    if (isMuted) {
-      audio.volume = volume[0] / 100
-      setIsMuted(false)
-    } else {
-      audio.volume = 0
-      setIsMuted(true)
+    if (audioRef.current) {
+      if (isMuted) {
+        audioRef.current.volume = volume
+        setIsMuted(false)
+      } else {
+        audioRef.current.volume = 0
+        setIsMuted(true)
+      }
     }
-  }
-
-  const skipTime = (seconds: number) => {
-    const audio = audioRef.current
-    if (!audio) return
-
-    const newTime = Math.max(0, Math.min(totalDuration, currentTime + seconds))
-    audio.currentTime = newTime
-    setCurrentTime(newTime)
   }
 
   const formatTime = (time: number) => {
@@ -242,199 +188,169 @@ export function EnhancedAudioPlayer({
     return `${minutes}:${seconds.toString().padStart(2, "0")}`
   }
 
-  const progressPercentage = totalDuration > 0 ? (currentTime / totalDuration) * 100 : 0
+  const skipForward = () => {
+    if (audioRef.current) {
+      audioRef.current.currentTime = Math.min(audioRef.current.currentTime + 10, audioDuration)
+    }
+  }
 
-  if (compact) {
+  const skipBackward = () => {
+    if (audioRef.current) {
+      audioRef.current.currentTime = Math.max(audioRef.current.currentTime - 10, 0)
+    }
+  }
+
+  if (mode === "compact") {
     return (
-      <div className={`bg-gray-900/90 backdrop-blur-sm rounded-lg p-3 border border-gray-700 ${className}`}>
-        <audio ref={audioRef} src={src} preload="metadata" />
-
-        <div className="flex items-center space-x-3">
-          <div className="relative w-10 h-10 flex-shrink-0">
-            <Image
-              src="/images/default-album-art.png"
-              alt="Album Art"
-              width={40}
-              height={40}
-              className="rounded-lg object-cover"
-            />
-            <Button
-              onClick={togglePlayPause}
-              disabled={isLoading}
-              size="sm"
-              className="absolute inset-0 w-full h-full rounded-lg bg-black/50 hover:bg-black/70 p-0 flex items-center justify-center"
-            >
-              {isLoading ? (
-                <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
-              ) : isPlaying ? (
-                <Pause className="h-3 w-3 text-white" />
-              ) : (
-                <Play className="h-3 w-3 ml-0.5 text-white" />
-              )}
-            </Button>
-          </div>
-
-          <div className="flex-1 min-w-0">
-            <div className="text-white text-sm font-medium truncate">{title}</div>
-            <div className="text-gray-400 text-xs truncate">{artist}</div>
-          </div>
-
-          <div className="text-gray-400 text-xs flex-shrink-0">
-            {formatTime(currentTime)} / {formatTime(totalDuration)}
-          </div>
+      <div className={`flex items-center space-x-4 p-4 bg-gray-800 rounded-lg ${className}`}>
+        <div className="relative w-12 h-12 flex-shrink-0">
+          <Image
+            src="/images/default-album-art.png"
+            alt="Album Art"
+            width={48}
+            height={48}
+            className="rounded-lg object-cover"
+          />
         </div>
 
-        {showWaveform && (
-          <div className="mt-2">
-            {isAnalyzing ? (
-              <div className="h-8 bg-gray-700 rounded animate-pulse" />
-            ) : (
-              <canvas
-                ref={canvasRef}
-                width={300}
-                height={32}
-                className="w-full h-8 cursor-pointer rounded"
-                onClick={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect()
-                  const x = e.clientX - rect.left
-                  const percentage = (x / rect.width) * 100
-                  handleProgressChange([percentage])
-                }}
-              />
-            )}
-          </div>
-        )}
+        <div className="flex-1 min-w-0">
+          <p className="text-white font-medium truncate">{title}</p>
+          <p className="text-gray-400 text-sm truncate">{artist}</p>
+        </div>
+
+        <Button
+          onClick={togglePlayPause}
+          size="sm"
+          className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white border-0"
+        >
+          {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+        </Button>
+
+        <audio
+          ref={audioRef}
+          src={src}
+          onTimeUpdate={handleTimeUpdate}
+          onLoadedMetadata={handleLoadedMetadata}
+          onEnded={() => setIsPlaying(false)}
+        />
       </div>
     )
   }
 
   return (
-    <div className={`bg-gray-900/90 backdrop-blur-sm rounded-xl p-6 border border-gray-700 ${className}`}>
-      <audio ref={audioRef} src={src} preload="metadata" />
-
-      {/* Track Info */}
-      <div className="flex items-center space-x-4 mb-4">
-        <div className="relative w-16 h-16 flex-shrink-0">
-          <Image
-            src="/images/default-album-art.png"
-            alt="Album Art"
-            width={64}
-            height={64}
-            className="rounded-lg object-cover"
-          />
-          <div className="absolute inset-0 flex items-center justify-center">
-            {isAnalyzing ? (
-              <div className="w-4 h-4 border border-white border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <div className="w-3 h-3 bg-white/80 rounded-full animate-pulse" />
+    <Card className={`bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700 shadow-2xl ${className}`}>
+      <CardContent className="p-6">
+        <div className="flex items-center space-x-6">
+          {/* Album Art */}
+          <div className="relative w-24 h-24 flex-shrink-0">
+            <div className="absolute inset-0 bg-gradient-to-r from-purple-500/20 to-blue-500/20 rounded-lg blur-xl"></div>
+            <Image
+              src="/images/default-album-art.png"
+              alt="Album Art"
+              width={96}
+              height={96}
+              className="relative rounded-lg object-cover shadow-lg transform hover:scale-105 transition-transform duration-300"
+            />
+            {isLoading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-gray-800/80 rounded-lg">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-500"></div>
+              </div>
             )}
           </div>
-        </div>
 
-        <div className="flex-1 min-w-0">
-          <h3 className="text-white font-semibold text-lg truncate">{title}</h3>
-          <p className="text-gray-400 truncate">{artist}</p>
-        </div>
-
-        <div className="text-gray-400 text-sm">
-          {formatTime(currentTime)} / {formatTime(totalDuration)}
-        </div>
-      </div>
-
-      {/* Waveform */}
-      {showWaveform && (
-        <div className="mb-4">
-          {isAnalyzing ? (
-            <div className="h-16 bg-gray-700 rounded-lg animate-pulse flex items-center justify-center">
-              <div className="text-gray-400 text-sm">Analyzing audio...</div>
+          {/* Track Info & Controls */}
+          <div className="flex-1 space-y-4">
+            {/* Track Info */}
+            <div>
+              <h3 className="text-white font-semibold text-lg truncate">{title}</h3>
+              <p className="text-gray-400 truncate">{artist}</p>
             </div>
-          ) : (
-            <canvas
-              ref={canvasRef}
-              width={600}
-              height={64}
-              className="w-full h-16 cursor-pointer rounded-lg bg-gray-800/50"
-              onClick={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect()
-                const x = e.clientX - rect.left
-                const percentage = (x / rect.width) * 100
-                handleProgressChange([percentage])
-              }}
-            />
-          )}
-        </div>
-      )}
 
-      {/* Progress Bar */}
-      <div className="mb-4">
-        <Slider
-          value={[progressPercentage]}
-          onValueChange={handleProgressChange}
-          max={100}
-          step={0.1}
-          className="w-full"
-        />
-      </div>
-
-      {/* Controls */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-2">
-          <Button
-            onClick={() => skipTime(-10)}
-            variant="outline"
-            size="sm"
-            className="border-gray-600 bg-transparent hover:bg-gray-700"
-          >
-            <SkipBack className="h-4 w-4 text-white" />
-          </Button>
-
-          <Button
-            onClick={togglePlayPause}
-            disabled={isLoading}
-            size="sm"
-            className="w-12 h-12 rounded-full bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 p-0"
-          >
-            {isLoading ? (
-              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : isPlaying ? (
-              <Pause className="h-5 w-5 text-white" />
-            ) : (
-              <Play className="h-5 w-5 ml-0.5 text-white" />
+            {/* Waveform Visualization */}
+            {showWaveform && (
+              <div className="relative">
+                <canvas ref={canvasRef} width={400} height={60} className="w-full h-15 bg-gray-900/50 rounded-md" />
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-purple-500/10 to-transparent pointer-events-none"></div>
+              </div>
             )}
-          </Button>
 
-          <Button
-            onClick={() => skipTime(10)}
-            variant="outline"
-            size="sm"
-            className="border-gray-600 bg-transparent hover:bg-gray-700"
-          >
-            <SkipForward className="h-4 w-4 text-white" />
-          </Button>
-        </div>
+            {/* Progress Bar */}
+            <div className="space-y-2">
+              <Slider
+                value={[currentTime]}
+                max={audioDuration}
+                step={0.1}
+                onValueChange={handleSeek}
+                className="w-full"
+              />
+              <div className="flex justify-between text-xs text-gray-400">
+                <span>{formatTime(currentTime)}</span>
+                <span>{formatTime(audioDuration)}</span>
+              </div>
+            </div>
 
-        {/* Volume Control */}
-        <div className="flex items-center space-x-2">
-          <Button
-            onClick={toggleMute}
-            variant="outline"
-            size="sm"
-            className="border-gray-600 bg-transparent hover:bg-gray-700"
-          >
-            {isMuted ? <VolumeX className="h-4 w-4 text-white" /> : <Volume2 className="h-4 w-4 text-blue-400" />}
-          </Button>
-          <div className="w-20">
-            <Slider
-              value={isMuted ? [0] : volume}
-              onValueChange={handleVolumeChange}
-              max={100}
-              step={1}
-              className="w-full"
-            />
+            {/* Controls */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Button
+                  onClick={skipBackward}
+                  size="sm"
+                  variant="ghost"
+                  className="text-white hover:text-blue-400 hover:bg-gray-700"
+                >
+                  <SkipBack className="h-4 w-4" />
+                </Button>
+
+                <Button
+                  onClick={togglePlayPause}
+                  size="lg"
+                  className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white border-0 shadow-lg"
+                  disabled={isLoading}
+                >
+                  {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+                </Button>
+
+                <Button
+                  onClick={skipForward}
+                  size="sm"
+                  variant="ghost"
+                  className="text-white hover:text-blue-400 hover:bg-gray-700"
+                >
+                  <SkipForward className="h-4 w-4" />
+                </Button>
+              </div>
+
+              {/* Volume Control */}
+              <div className="flex items-center space-x-2">
+                <Button
+                  onClick={toggleMute}
+                  size="sm"
+                  variant="ghost"
+                  className="text-white hover:text-blue-400 hover:bg-gray-700"
+                >
+                  {isMuted || volume === 0 ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+                </Button>
+                <Slider
+                  value={[isMuted ? 0 : volume]}
+                  max={1}
+                  step={0.1}
+                  onValueChange={handleVolumeChange}
+                  className="w-20"
+                />
+              </div>
+            </div>
           </div>
-          <span className="text-gray-400 text-xs w-8 text-right">{isMuted ? "0%" : `${volume[0]}%`}</span>
         </div>
-      </div>
-    </div>
+
+        <audio
+          ref={audioRef}
+          src={src}
+          onTimeUpdate={handleTimeUpdate}
+          onLoadedMetadata={handleLoadedMetadata}
+          onEnded={() => setIsPlaying(false)}
+          crossOrigin="anonymous"
+        />
+      </CardContent>
+    </Card>
   )
 }

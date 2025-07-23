@@ -91,7 +91,7 @@ export default function SubmitPage() {
   const [submitting, setSubmitting] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [selectedMoodTags, setSelectedMoodTags] = useState<string[]>([])
+  const [selectedMoodTag, setSelectedMoodTag] = useState<string>("")
   const [formData, setFormData] = useState({
     title: "",
     artistName: "",
@@ -176,14 +176,8 @@ export default function SubmitPage() {
     })
   }
 
-  const toggleMoodTag = (tag: string) => {
-    setSelectedMoodTags((prevTags) => {
-      if (prevTags.includes(tag)) {
-        return prevTags.filter((t) => t !== tag)
-      } else {
-        return [...prevTags, tag]
-      }
-    })
+  const handleMoodTagChange = (value: string) => {
+    setSelectedMoodTag(value)
   }
 
   const validateForm = () => {
@@ -196,6 +190,9 @@ export default function SubmitPage() {
     }
     if (!formData.genre) {
       tempErrors.genre = "Genre is required"
+    }
+    if (!selectedMoodTag) {
+      tempErrors.moodTag = "Mood tag is required"
     }
     if (!selectedFile) {
       tempErrors.file = "Audio file is required"
@@ -226,6 +223,20 @@ export default function SubmitPage() {
 
         setUploadProgress(25)
 
+        // First check if bucket exists
+        const { data: buckets, error: bucketError } = await supabase.storage.listBuckets()
+        console.log("Available buckets:", buckets)
+
+        if (bucketError) {
+          console.error("Error listing buckets:", bucketError)
+          throw new Error(`Bucket check failed: ${bucketError.message}`)
+        }
+
+        const bucketExists = buckets?.some((bucket) => bucket.id === "audio-submissions")
+        if (!bucketExists) {
+          throw new Error("Audio submissions bucket not found. Please contact support.")
+        }
+
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from("audio-submissions")
           .upload(filePath, selectedFile, {
@@ -234,6 +245,7 @@ export default function SubmitPage() {
           })
 
         if (uploadError) {
+          console.error("Upload error details:", uploadError)
           throw new Error(`Upload failed: ${uploadError.message}`)
         }
 
@@ -258,7 +270,7 @@ export default function SubmitPage() {
           track_title: formData.title,
           artist_name: formData.artistName,
           genre: formData.genre,
-          mood_tags: selectedMoodTags,
+          mood_tags: [selectedMoodTag], // Send as array with single item
           file_url: fileUrl,
           file_size: selectedFile?.size || 0,
           duration: audioDuration || 0,
@@ -275,7 +287,7 @@ export default function SubmitPage() {
           genre: "",
         })
         setSelectedFile(null)
-        setSelectedMoodTags([])
+        setSelectedMoodTag("")
         setErrors({})
         setAudioDuration(null)
         setAudioUrl(null)
@@ -466,29 +478,38 @@ export default function SubmitPage() {
                 </div>
               </div>
 
-              {/* Mood Tags */}
+              {/* Mood Tag - Single Selection */}
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-white flex items-center">
                   <Tag className="h-5 w-5 mr-2 text-purple-400" />
-                  Mood Tags
+                  Mood Tag *
                 </h3>
-                <p className="text-gray-400 text-sm">Select tags that best describe the mood of your track</p>
-                <div className="flex flex-wrap gap-2">
-                  {moodTags.map((tag) => (
-                    <Badge
-                      key={tag}
-                      variant={selectedMoodTags.includes(tag) ? "default" : "outline"}
-                      onClick={() => toggleMoodTag(tag)}
-                      className={`cursor-pointer transition-all ${
-                        selectedMoodTags.includes(tag)
-                          ? "bg-gradient-to-r from-purple-500 to-blue-500 text-white border-transparent hover:from-purple-600 hover:to-blue-600"
-                          : "border-gray-600 text-gray-300 hover:border-purple-500 hover:text-purple-300"
-                      }`}
-                    >
-                      {tag}
-                    </Badge>
-                  ))}
+                <p className="text-gray-400 text-sm">Select the mood that best describes your track</p>
+
+                <div>
+                  <Select onValueChange={handleMoodTagChange} value={selectedMoodTag}>
+                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white focus:border-purple-500">
+                      <SelectValue placeholder="Select your track's mood" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-gray-700 border-gray-600">
+                      {moodTags.map((tag) => (
+                        <SelectItem key={tag} value={tag} className="text-white hover:bg-gray-600">
+                          {tag}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.moodTag && <p className="text-red-400 text-sm mt-1">{errors.moodTag}</p>}
                 </div>
+
+                {/* Show selected mood tag */}
+                {selectedMoodTag && (
+                  <div className="mt-2">
+                    <Badge className="bg-gradient-to-r from-purple-500 to-blue-500 text-white border-transparent">
+                      {selectedMoodTag}
+                    </Badge>
+                  </div>
+                )}
               </div>
 
               {/* File Upload */}

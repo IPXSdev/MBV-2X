@@ -1,3 +1,6 @@
+-- First, check if bucket exists and delete if it does to recreate properly
+DELETE FROM storage.buckets WHERE id = 'audio-submissions';
+
 -- Create the audio-submissions storage bucket
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES (
@@ -6,11 +9,9 @@ VALUES (
   true,
   52428800, -- 50MB limit
   ARRAY['audio/mpeg', 'audio/wav', 'audio/flac', 'audio/mp3', 'audio/x-wav', 'audio/x-flac', 'audio/aac', 'audio/ogg']
-) ON CONFLICT (id) DO UPDATE SET
-  file_size_limit = EXCLUDED.file_size_limit,
-  allowed_mime_types = EXCLUDED.allowed_mime_types;
+);
 
--- Enable RLS on storage.objects
+-- Enable RLS on storage.objects if not already enabled
 ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
 
 -- Drop existing policies if they exist
@@ -46,3 +47,6 @@ FOR SELECT USING (bucket_id = 'audio-submissions');
 -- Grant necessary permissions
 GRANT ALL ON storage.objects TO authenticated;
 GRANT ALL ON storage.buckets TO authenticated;
+
+-- Verify bucket was created
+SELECT * FROM storage.buckets WHERE id = 'audio-submissions';
