@@ -1,13 +1,5 @@
 "use client"
 import { useState, useEffect } from "react"
-import { SelectItem } from "@/components/ui/select"
-
-import { SelectContent } from "@/components/ui/select"
-
-import { SelectValue } from "@/components/ui/select"
-
-import { SelectTrigger } from "@/components/ui/select"
-
 import { Select } from "@/components/ui/select"
 
 import type React from "react"
@@ -207,10 +199,24 @@ export default function SubmitPage() {
 
   const checkBucketStatus = async () => {
     try {
+      console.log("Checking bucket status...")
       const response = await fetch("/api/debug/bucket-status")
+
+      if (!response.ok) {
+        console.error("Bucket status check failed:", response.status, response.statusText)
+        return false
+      }
+
       const data = await response.json()
-      console.log("Bucket status:", data)
-      return data.audioSubmissionsBucket !== null
+      console.log("Bucket status response:", data)
+
+      const bucketExists = data.audioSubmissionsBucket !== null
+      const canUpload = data.uploadTest?.canCreateUploadUrl !== false
+
+      console.log("Bucket exists:", bucketExists)
+      console.log("Can upload:", canUpload)
+
+      return bucketExists && canUpload
     } catch (error) {
       console.error("Error checking bucket status:", error)
       return false
@@ -236,13 +242,18 @@ export default function SubmitPage() {
 
         // Check bucket status first
         setUploadProgress(10)
-        const bucketExists = await checkBucketStatus()
+        console.log("Checking if bucket exists before upload...")
 
-        if (!bucketExists) {
+        const bucketStatus = await checkBucketStatus()
+
+        if (!bucketStatus) {
+          console.error("Bucket check failed")
           throw new Error(
-            "Audio submissions bucket not found. Please run the bucket creation script or contact support.",
+            "Audio submissions storage is not properly configured. Please run the bucket creation script: scripts/32-create-audio-submissions-bucket.sql",
           )
         }
+
+        console.log("Bucket check passed, proceeding with upload...")
 
         const fileExt = selectedFile.name.split(".").pop()
         const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
@@ -250,11 +261,12 @@ export default function SubmitPage() {
 
         setUploadProgress(25)
 
-        console.log("Attempting to upload file:", {
+        console.log("Upload details:", {
           bucket: "audio-submissions",
           filePath,
           fileSize: selectedFile.size,
           fileType: selectedFile.type,
+          fileName: selectedFile.name,
         })
 
         const { data: uploadData, error: uploadError } = await supabase.storage
@@ -266,8 +278,11 @@ export default function SubmitPage() {
 
         if (uploadError) {
           console.error("Upload error details:", uploadError)
+          console.error("Upload error code:", uploadError.statusCode)
+          console.error("Upload error message:", uploadError.message)
+
           throw new Error(
-            `Upload failed: ${uploadError.message}. Please ensure the storage bucket is properly configured.`,
+            `Upload failed: ${uploadError.message}. Please ensure the storage bucket exists and is properly configured.`,
           )
         }
 
@@ -487,16 +502,16 @@ export default function SubmitPage() {
                     Genre *
                   </Label>
                   <Select onValueChange={handleGenreChange}>
-                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white focus:border-purple-500">
-                      <SelectValue placeholder="Select your track's genre" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-gray-700 border-gray-600">
+                    <Select.Trigger className="bg-gray-700 border-gray-600 text-white focus:border-purple-500">
+                      <Select.Value placeholder="Select your track's genre" />
+                    </Select.Trigger>
+                    <Select.Content className="bg-gray-700 border-gray-600">
                       {genres.map((genre) => (
-                        <SelectItem key={genre} value={genre} className="text-white hover:bg-gray-600">
+                        <Select.Item key={genre} value={genre} className="text-white hover:bg-gray-600">
                           {genre}
-                        </SelectItem>
+                        </Select.Item>
                       ))}
-                    </SelectContent>
+                    </Select.Content>
                   </Select>
                   {errors.genre && <p className="text-red-400 text-sm mt-1">{errors.genre}</p>}
                 </div>

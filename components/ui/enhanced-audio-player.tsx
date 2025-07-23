@@ -1,23 +1,21 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
-import { Card, CardContent } from "@/components/ui/card"
 import {
   Play,
   Pause,
-  Volume2,
-  VolumeX,
   SkipBack,
   SkipForward,
-  Repeat,
+  Volume2,
+  VolumeX,
   Shuffle,
-  Download,
+  Repeat,
   Heart,
   Share2,
+  Download,
 } from "lucide-react"
-import Image from "next/image"
 
 interface EnhancedAudioPlayerProps {
   src: string
@@ -40,325 +38,359 @@ export function EnhancedAudioPlayer({
 }: EnhancedAudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const animationRef = useRef<number>()
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const analyserRef = useRef<AnalyserNode | null>(null)
+  const sourceRef = useRef<MediaElementAudioSourceNode | null>(null)
+
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
-  const [audioDuration, setAudioDuration] = useState(duration || 0)
+  const [totalDuration, setTotalDuration] = useState(duration || 0)
   const [volume, setVolume] = useState(1)
   const [isMuted, setIsMuted] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [waveformData, setWaveformData] = useState<number[]>([])
-  const [audioContext, setAudioContext] = useState<AudioContext | null>(null)
-  const [analyser, setAnalyser] = useState<AnalyserNode | null>(null)
-  const [isLiked, setIsLiked] = useState(false)
-  const [isRepeat, setIsRepeat] = useState(false)
-  const [isShuffle, setIsShuffle] = useState(false)
 
-  useEffect(() => {
-    const audio = audioRef.current
-    if (!audio) return
-
-    const handleLoadedMetadata = () => {
-      setAudioDuration(audio.duration)
-      setIsLoading(false)
-      if (showWaveform) {
-        generateWaveform()
-      }
-    }
-
-    const handleTimeUpdate = () => {
-      setCurrentTime(audio.currentTime)
-    }
-
-    const handleEnded = () => {
-      if (isRepeat) {
-        audio.currentTime = 0
-        audio.play()
-      } else {
-        setIsPlaying(false)
-        setCurrentTime(0)
-      }
-    }
-
-    audio.addEventListener("loadedmetadata", handleLoadedMetadata)
-    audio.addEventListener("timeupdate", handleTimeUpdate)
-    audio.addEventListener("ended", handleEnded)
-
-    return () => {
-      audio.removeEventListener("loadedmetadata", handleLoadedMetadata)
-      audio.removeEventListener("timeupdate", handleTimeUpdate)
-      audio.removeEventListener("ended", handleEnded)
-    }
-  }, [src, showWaveform, isRepeat])
-
-  const generateWaveform = async () => {
-    if (!audioRef.current || !showWaveform) return
+  // Initialize audio context and analyser
+  const initializeAudioContext = useCallback(async () => {
+    if (!audioRef.current || audioContextRef.current) return
 
     try {
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
-      const response = await fetch(src)
-      const arrayBuffer = await response.arrayBuffer()
-      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
+      const analyser = audioContext.createAnalyser()
+      const source = audioContext.createMediaElementSource(audioRef.current)
 
-      const rawData = audioBuffer.getChannelData(0)
-      const samples = 100
-      const blockSize = Math.floor(rawData.length / samples)
-      const filteredData = []
+      analyser.fftSize = 256
+      source.connect(analyser)
+      analyser.connect(audioContext.destination)
 
-      for (let i = 0; i < samples; i++) {
-        const blockStart = blockSize * i
-        let sum = 0
-        for (let j = 0; j < blockSize; j++) {
-          sum = sum + Math.abs(rawData[blockStart + j])
-        }
-        filteredData.push(sum / blockSize)
+      audioContextRef.current = audioContext
+      analyserRef.current = analyser
+      sourceRef.current = source
+
+      // Generate initial waveform data
+      const bufferLength = analyser.frequencyBinCount
+      const dataArray = new Uint8Array(bufferLength)
+      setWaveformData(Array.from({ length: 64 }, () => Math.random() * 100))
+    } catch (error) {
+      console.error("Error initializing audio context:", error)
+    }
+  }, [])
+
+  // Animate waveform
+  const animateWaveform = useCallback(() => {
+    if (!analyserRef.current || !canvasRef.current) return
+
+    const canvas = canvasRef.current
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+
+    const analyser = analyserRef.current
+    const bufferLength = analyser.frequencyBinCount
+    const dataArray = new Uint8Array(bufferLength)
+
+    const animate = () => {
+      analyser.getByteFrequencyData(dataArray)
+
+      // Clear canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+      // Draw waveform bars
+      const barWidth = canvas.width / 64
+      let x = 0
+
+      // Create gradient
+      const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height)
+      gradient.addColorStop(0, "#8b5cf6") // Purple
+      gradient.addColorStop(0.5, "#3b82f6") // Blue
+      gradient.addColorStop(1, "#06b6d4") // Cyan
+
+      for (let i = 0; i < 64; i++) {
+        const barHeight = isPlaying
+          ? (dataArray[i] / 255) * canvas.height * 0.8 + 10
+          : Math.sin(Date.now() * 0.001 + i * 0.1) * 20 + 30
+
+        ctx.fillStyle = gradient
+        ctx.fillRect(x, canvas.height - barHeight, barWidth - 2, barHeight)
+
+        x += barWidth
       }
 
-      const multiplier = Math.pow(Math.max(...filteredData), -1)
-      const normalizedData = filteredData.map((n) => n * multiplier)
+      if (isPlaying) {
+        animationRef.current = requestAnimationFrame(animate)
+      }
+    }
 
-      setWaveformData(normalizedData)
-      setAudioContext(audioContext)
+    animate()
+  }, [isPlaying])
+
+  // Handle play/pause
+  const togglePlayPause = async () => {
+    if (!audioRef.current) return
+
+    try {
+      if (isPlaying) {
+        audioRef.current.pause()
+        setIsPlaying(false)
+      } else {
+        await initializeAudioContext()
+        await audioRef.current.play()
+        setIsPlaying(true)
+      }
     } catch (error) {
-      console.error("Error generating waveform:", error)
+      console.error("Error toggling play/pause:", error)
     }
   }
 
-  const togglePlayPause = () => {
-    const audio = audioRef.current
-    if (!audio) return
-
-    if (isPlaying) {
-      audio.pause()
-    } else {
-      audio.play()
+  // Handle time update
+  const handleTimeUpdate = () => {
+    if (audioRef.current) {
+      setCurrentTime(audioRef.current.currentTime)
     }
-    setIsPlaying(!isPlaying)
   }
 
+  // Handle loaded metadata
+  const handleLoadedMetadata = () => {
+    if (audioRef.current) {
+      setTotalDuration(audioRef.current.duration)
+      setIsLoading(false)
+    }
+  }
+
+  // Handle seek
   const handleSeek = (value: number[]) => {
-    const audio = audioRef.current
-    if (!audio) return
-
-    const newTime = (value[0] / 100) * audioDuration
-    audio.currentTime = newTime
-    setCurrentTime(newTime)
+    if (audioRef.current) {
+      audioRef.current.currentTime = value[0]
+      setCurrentTime(value[0])
+    }
   }
 
+  // Handle volume change
   const handleVolumeChange = (value: number[]) => {
-    const audio = audioRef.current
-    if (!audio) return
-
-    const newVolume = value[0] / 100
-    audio.volume = newVolume
+    const newVolume = value[0]
     setVolume(newVolume)
+    if (audioRef.current) {
+      audioRef.current.volume = newVolume
+    }
     setIsMuted(newVolume === 0)
   }
 
+  // Toggle mute
   const toggleMute = () => {
-    const audio = audioRef.current
-    if (!audio) return
-
-    if (isMuted) {
-      audio.volume = volume
-      setIsMuted(false)
-    } else {
-      audio.volume = 0
-      setIsMuted(true)
+    if (audioRef.current) {
+      if (isMuted) {
+        audioRef.current.volume = volume
+        setIsMuted(false)
+      } else {
+        audioRef.current.volume = 0
+        setIsMuted(true)
+      }
     }
   }
 
-  const skipForward = () => {
-    const audio = audioRef.current
-    if (!audio) return
-
-    audio.currentTime = Math.min(audio.currentTime + 10, audioDuration)
-  }
-
-  const skipBackward = () => {
-    const audio = audioRef.current
-    if (!audio) return
-
-    audio.currentTime = Math.max(audio.currentTime - 10, 0)
-  }
-
+  // Format time
   const formatTime = (time: number) => {
     const minutes = Math.floor(time / 60)
     const seconds = Math.floor(time % 60)
     return `${minutes}:${seconds.toString().padStart(2, "0")}`
   }
 
-  const progress = audioDuration > 0 ? (currentTime / audioDuration) * 100 : 0
+  // Start waveform animation when playing
+  useEffect(() => {
+    if (isPlaying && showWaveform) {
+      animateWaveform()
+    } else if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current)
+    }
+
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current)
+      }
+    }
+  }, [isPlaying, showWaveform, animateWaveform])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (audioContextRef.current) {
+        audioContextRef.current.close()
+      }
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current)
+      }
+    }
+  }, [])
 
   if (mode === "compact") {
     return (
-      <Card className="bg-gradient-to-r from-gray-800/50 to-gray-900/50 border-gray-700/50 backdrop-blur-sm">
-        <CardContent className="p-4">
-          <div className="flex items-center space-x-4">
-            <div className="relative w-12 h-12 rounded-lg overflow-hidden flex-shrink-0">
-              <Image
-                src={albumArt || "/images/default-album-art.png"}
-                alt={`${title} album art`}
-                fill
-                className="object-cover"
-              />
-            </div>
+      <div className="w-full max-w-full overflow-hidden bg-gradient-to-r from-gray-800 to-gray-700 rounded-lg p-4 border border-gray-600">
+        <audio
+          ref={audioRef}
+          src={src}
+          onTimeUpdate={handleTimeUpdate}
+          onLoadedMetadata={handleLoadedMetadata}
+          onEnded={() => setIsPlaying(false)}
+        />
 
-            <div className="flex-1 min-w-0">
-              <h4 className="text-white font-medium truncate">{title}</h4>
-              <p className="text-gray-400 text-sm truncate">{artist}</p>
+        <div className="flex items-center space-x-4">
+          {/* Album Art */}
+          <div className="flex-shrink-0">
+            <div className="w-12 h-12 rounded-lg overflow-hidden bg-gradient-to-br from-purple-500 via-blue-500 to-cyan-500 p-0.5">
+              <div className="w-full h-full rounded-lg bg-gray-800 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-yellow-400 via-orange-500 to-red-500 animate-spin-slow"></div>
+              </div>
             </div>
-
-            <Button
-              onClick={togglePlayPause}
-              size="sm"
-              className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white border-0 w-10 h-10 rounded-full p-0"
-            >
-              {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
-            </Button>
           </div>
 
-          <audio ref={audioRef} src={src} preload="metadata" />
-        </CardContent>
-      </Card>
+          {/* Track Info */}
+          <div className="flex-1 min-w-0">
+            <h4 className="text-white font-medium truncate">{title}</h4>
+            <p className="text-gray-400 text-sm truncate">{artist}</p>
+          </div>
+
+          {/* Play Button */}
+          <Button
+            onClick={togglePlayPause}
+            disabled={isLoading}
+            className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white rounded-full w-10 h-10 p-0"
+          >
+            {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
+          </Button>
+        </div>
+      </div>
     )
   }
 
   return (
-    <div className="w-full max-w-full overflow-hidden">
-      <Card className="bg-gradient-to-br from-gray-800/80 to-gray-900/80 border-gray-700/50 backdrop-blur-sm shadow-2xl">
-        <CardContent className="p-6">
-          <div className="flex flex-col lg:flex-row items-start space-y-4 lg:space-y-0 lg:space-x-6">
-            {/* Album Art */}
-            <div className="relative w-24 h-24 rounded-xl overflow-hidden flex-shrink-0 shadow-lg mx-auto lg:mx-0">
-              <Image
-                src={albumArt || "/images/default-album-art.png"}
-                alt={`${title} album art`}
-                fill
-                className="object-cover transition-transform duration-300 hover:scale-105"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
-            </div>
+    <div className="w-full max-w-full overflow-hidden bg-gradient-to-br from-gray-800 via-gray-700 to-gray-800 rounded-xl p-6 border border-gray-600 shadow-2xl">
+      <audio
+        ref={audioRef}
+        src={src}
+        onTimeUpdate={handleTimeUpdate}
+        onLoadedMetadata={handleLoadedMetadata}
+        onEnded={() => setIsPlaying(false)}
+      />
 
-            {/* Track Info & Controls */}
-            <div className="flex-1 w-full min-w-0 space-y-4">
-              {/* Track Info */}
-              <div className="text-center lg:text-left">
-                <h3 className="text-xl font-bold text-white mb-1 truncate">{title}</h3>
-                <p className="text-gray-300 font-medium truncate">{artist}</p>
-              </div>
-
-              {/* Waveform */}
-              {showWaveform && waveformData.length > 0 && (
-                <div className="relative h-16 bg-gray-800/50 rounded-lg overflow-hidden w-full">
-                  <div className="flex items-end justify-center h-full px-2 space-x-1">
-                    {waveformData.map((amplitude, index) => {
-                      const height = Math.max(amplitude * 100, 2)
-                      const isActive = (index / waveformData.length) * 100 <= progress
-                      return (
-                        <div
-                          key={index}
-                          className={`flex-1 max-w-[4px] rounded-full transition-all duration-150 ${
-                            isActive ? "bg-gradient-to-t from-purple-500 to-blue-400 shadow-sm" : "bg-gray-600/50"
-                          }`}
-                          style={{ height: `${height}%` }}
-                        />
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Progress Bar */}
-              <div className="space-y-2 w-full">
-                <Slider value={[progress]} onValueChange={handleSeek} max={100} step={0.1} className="w-full" />
-                <div className="flex justify-between text-sm text-gray-400">
-                  <span>{formatTime(currentTime)}</span>
-                  <span>{formatTime(audioDuration)}</span>
-                </div>
-              </div>
-
-              {/* Controls */}
-              <div className="flex flex-col sm:flex-row items-center justify-between space-y-4 sm:space-y-0 w-full">
-                <div className="flex items-center space-x-2">
-                  <Button
-                    onClick={() => setIsShuffle(!isShuffle)}
-                    size="sm"
-                    variant="ghost"
-                    className={`text-white hover:bg-gray-700/50 ${isShuffle ? "text-blue-400" : "text-gray-400"}`}
-                  >
-                    <Shuffle className="h-4 w-4" />
-                  </Button>
-
-                  <Button onClick={skipBackward} size="sm" variant="ghost" className="text-white hover:bg-gray-700/50">
-                    <SkipBack className="h-4 w-4" />
-                  </Button>
-
-                  <Button
-                    onClick={togglePlayPause}
-                    disabled={isLoading}
-                    className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white border-0 w-12 h-12 rounded-full shadow-lg"
-                  >
-                    {isLoading ? (
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                    ) : isPlaying ? (
-                      <Pause className="h-5 w-5" />
-                    ) : (
-                      <Play className="h-5 w-5 ml-0.5" />
-                    )}
-                  </Button>
-
-                  <Button onClick={skipForward} size="sm" variant="ghost" className="text-white hover:bg-gray-700/50">
-                    <SkipForward className="h-4 w-4" />
-                  </Button>
-
-                  <Button
-                    onClick={() => setIsRepeat(!isRepeat)}
-                    size="sm"
-                    variant="ghost"
-                    className={`text-white hover:bg-gray-700/50 ${isRepeat ? "text-blue-400" : "text-gray-400"}`}
-                  >
-                    <Repeat className="h-4 w-4" />
-                  </Button>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <Button
-                    onClick={() => setIsLiked(!isLiked)}
-                    size="sm"
-                    variant="ghost"
-                    className={`text-white hover:bg-gray-700/50 ${isLiked ? "text-red-400" : "text-gray-400"}`}
-                  >
-                    <Heart className={`h-4 w-4 ${isLiked ? "fill-current" : ""}`} />
-                  </Button>
-
-                  <Button size="sm" variant="ghost" className="text-white hover:bg-gray-700/50">
-                    <Share2 className="h-4 w-4" />
-                  </Button>
-
-                  <Button size="sm" variant="ghost" className="text-white hover:bg-gray-700/50">
-                    <Download className="h-4 w-4" />
-                  </Button>
-
-                  <div className="flex items-center space-x-2 ml-4">
-                    <Button onClick={toggleMute} size="sm" variant="ghost" className="text-white hover:bg-gray-700/50">
-                      {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-                    </Button>
-                    <Slider
-                      value={[isMuted ? 0 : volume * 100]}
-                      onValueChange={handleVolumeChange}
-                      max={100}
-                      step={1}
-                      className="w-20"
-                    />
-                  </div>
+      <div className="flex flex-col lg:flex-row items-start lg:items-center space-y-4 lg:space-y-0 lg:space-x-6">
+        {/* Album Art */}
+        <div className="flex-shrink-0">
+          <div className="w-20 h-20 lg:w-24 lg:h-24 rounded-xl overflow-hidden bg-gradient-to-br from-purple-500 via-blue-500 to-cyan-500 p-1 shadow-lg">
+            <div className="w-full h-full rounded-lg bg-gray-800 flex items-center justify-center relative overflow-hidden">
+              {/* Holographic CD/Record */}
+              <div className="w-16 h-16 lg:w-20 lg:h-20 rounded-full relative">
+                {/* Outer ring - holographic effect */}
+                <div className="absolute inset-0 rounded-full bg-gradient-conic from-purple-500 via-blue-500 via-cyan-500 via-green-500 via-yellow-500 via-red-500 to-purple-500 animate-spin-slow"></div>
+                {/* Inner disc */}
+                <div className="absolute inset-2 rounded-full bg-gradient-radial from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center">
+                  {/* Center hole */}
+                  <div className="w-3 h-3 rounded-full bg-gray-900 border border-gray-600"></div>
+                  {/* Reflection lines */}
+                  <div className="absolute inset-0 rounded-full bg-gradient-to-r from-transparent via-white/10 to-transparent transform rotate-45"></div>
+                  <div className="absolute inset-0 rounded-full bg-gradient-to-r from-transparent via-white/5 to-transparent transform -rotate-45"></div>
                 </div>
               </div>
             </div>
           </div>
+        </div>
 
-          <audio ref={audioRef} src={src} preload="metadata" />
-        </CardContent>
-      </Card>
+        {/* Track Info and Controls */}
+        <div className="flex-1 w-full min-w-0">
+          {/* Track Info */}
+          <div className="mb-4">
+            <h3 className="text-xl font-bold text-white truncate">{title}</h3>
+            <p className="text-gray-400 truncate">{artist}</p>
+          </div>
+
+          {/* Waveform */}
+          {showWaveform && (
+            <div className="mb-4 h-16 bg-gray-900/50 rounded-lg overflow-hidden">
+              <canvas
+                ref={canvasRef}
+                width={800}
+                height={64}
+                className="w-full h-full"
+                style={{ imageRendering: "pixelated" }}
+              />
+            </div>
+          )}
+
+          {/* Progress Bar */}
+          <div className="mb-4">
+            <Slider
+              value={[currentTime]}
+              max={totalDuration}
+              step={0.1}
+              onValueChange={handleSeek}
+              className="w-full"
+            />
+            <div className="flex justify-between text-sm text-gray-400 mt-1">
+              <span>{formatTime(currentTime)}</span>
+              <span>{formatTime(totalDuration)}</span>
+            </div>
+          </div>
+
+          {/* Controls */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white hover:bg-gray-700">
+                <Shuffle className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white hover:bg-gray-700">
+                <SkipBack className="h-4 w-4" />
+              </Button>
+              <Button
+                onClick={togglePlayPause}
+                disabled={isLoading}
+                className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white rounded-full w-12 h-12 p-0 shadow-lg"
+              >
+                {isLoading ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                ) : isPlaying ? (
+                  <Pause className="h-5 w-5" />
+                ) : (
+                  <Play className="h-5 w-5 ml-0.5" />
+                )}
+              </Button>
+              <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white hover:bg-gray-700">
+                <SkipForward className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white hover:bg-gray-700">
+                <Repeat className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white hover:bg-gray-700">
+                <Heart className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white hover:bg-gray-700">
+                <Share2 className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white hover:bg-gray-700">
+                <Download className="h-4 w-4" />
+              </Button>
+              <div className="flex items-center space-x-2 ml-4">
+                <Button
+                  onClick={toggleMute}
+                  variant="ghost"
+                  size="sm"
+                  className="text-gray-400 hover:text-white hover:bg-gray-700"
+                >
+                  {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+                </Button>
+                <Slider
+                  value={[isMuted ? 0 : volume]}
+                  max={1}
+                  step={0.01}
+                  onValueChange={handleVolumeChange}
+                  className="w-20"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
