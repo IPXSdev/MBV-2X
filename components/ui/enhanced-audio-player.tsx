@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react"
 import { Play, Pause, Volume2, VolumeX, SkipBack, SkipForward } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
+import Image from "next/image"
 
 interface EnhancedAudioPlayerProps {
   src: string
@@ -249,20 +250,29 @@ export function EnhancedAudioPlayer({
         <audio ref={audioRef} src={src} preload="metadata" />
 
         <div className="flex items-center space-x-3">
-          <Button
-            onClick={togglePlayPause}
-            disabled={isLoading}
-            size="sm"
-            className="w-8 h-8 rounded-full bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 p-0 flex-shrink-0"
-          >
-            {isLoading ? (
-              <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
-            ) : isPlaying ? (
-              <Pause className="h-3 w-3" />
-            ) : (
-              <Play className="h-3 w-3 ml-0.5" />
-            )}
-          </Button>
+          <div className="relative w-10 h-10 flex-shrink-0">
+            <Image
+              src="/images/default-album-art.png"
+              alt="Album Art"
+              width={40}
+              height={40}
+              className="rounded-lg object-cover"
+            />
+            <Button
+              onClick={togglePlayPause}
+              disabled={isLoading}
+              size="sm"
+              className="absolute inset-0 w-full h-full rounded-lg bg-black/50 hover:bg-black/70 p-0 flex items-center justify-center"
+            >
+              {isLoading ? (
+                <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
+              ) : isPlaying ? (
+                <Pause className="h-3 w-3 text-white" />
+              ) : (
+                <Play className="h-3 w-3 ml-0.5 text-white" />
+              )}
+            </Button>
+          </div>
 
           <div className="flex-1 min-w-0">
             <div className="text-white text-sm font-medium truncate">{title}</div>
@@ -304,12 +314,19 @@ export function EnhancedAudioPlayer({
 
       {/* Track Info */}
       <div className="flex items-center space-x-4 mb-4">
-        <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-blue-500 rounded-lg flex items-center justify-center flex-shrink-0">
-          <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
+        <div className="relative w-16 h-16 flex-shrink-0">
+          <Image
+            src="/images/default-album-art.png"
+            alt="Album Art"
+            width={64}
+            height={64}
+            className="rounded-lg object-cover"
+          />
+          <div className="absolute inset-0 flex items-center justify-center">
             {isAnalyzing ? (
               <div className="w-4 h-4 border border-white border-t-transparent rounded-full animate-spin" />
             ) : (
-              <div className="w-3 h-3 bg-white rounded-full animate-pulse" />
+              <div className="w-3 h-3 bg-white/80 rounded-full animate-pulse" />
             )}
           </div>
         </div>
@@ -368,7 +385,7 @@ export function EnhancedAudioPlayer({
             size="sm"
             className="border-gray-600 bg-transparent hover:bg-gray-700"
           >
-            <SkipBack className="h-4 w-4" />
+            <SkipBack className="h-4 w-4 text-white" />
           </Button>
 
           <Button
@@ -380,9 +397,9 @@ export function EnhancedAudioPlayer({
             {isLoading ? (
               <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
             ) : isPlaying ? (
-              <Pause className="h-5 w-5" />
+              <Pause className="h-5 w-5 text-white" />
             ) : (
-              <Play className="h-5 w-5 ml-0.5" />
+              <Play className="h-5 w-5 ml-0.5 text-white" />
             )}
           </Button>
 
@@ -392,7 +409,7 @@ export function EnhancedAudioPlayer({
             size="sm"
             className="border-gray-600 bg-transparent hover:bg-gray-700"
           >
-            <SkipForward className="h-4 w-4" />
+            <SkipForward className="h-4 w-4 text-white" />
           </Button>
         </div>
 
@@ -404,7 +421,7 @@ export function EnhancedAudioPlayer({
             size="sm"
             className="border-gray-600 bg-transparent hover:bg-gray-700"
           >
-            {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+            {isMuted ? <VolumeX className="h-4 w-4 text-white" /> : <Volume2 className="h-4 w-4 text-blue-400" />}
           </Button>
           <div className="w-20">
             <Slider

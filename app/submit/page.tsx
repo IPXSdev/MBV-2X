@@ -7,7 +7,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -97,7 +96,6 @@ export default function SubmitPage() {
     title: "",
     artistName: "",
     genre: "",
-    description: "",
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [success, setSuccess] = useState(false)
@@ -163,7 +161,7 @@ export default function SubmitPage() {
     }
   }
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
     setFormData({
       ...formData,
@@ -261,7 +259,6 @@ export default function SubmitPage() {
           artist_name: formData.artistName,
           genre: formData.genre,
           mood_tags: selectedMoodTags,
-          description: formData.description,
           file_url: fileUrl,
           file_size: selectedFile?.size || 0,
           duration: audioDuration || 0,
@@ -276,7 +273,6 @@ export default function SubmitPage() {
           title: "",
           artistName: "",
           genre: "",
-          description: "",
         })
         setSelectedFile(null)
         setSelectedMoodTags([])
@@ -467,21 +463,6 @@ export default function SubmitPage() {
                     </SelectContent>
                   </Select>
                   {errors.genre && <p className="text-red-400 text-sm mt-1">{errors.genre}</p>}
-                </div>
-
-                <div>
-                  <Label htmlFor="description" className="text-white">
-                    Description
-                  </Label>
-                  <Textarea
-                    id="description"
-                    name="description"
-                    value={formData.description}
-                    onChange={handleInputChange}
-                    className="bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-purple-500"
-                    placeholder="Tell us about your track, inspiration, or what feedback you're looking for..."
-                    rows={3}
-                  />
                 </div>
               </div>
 

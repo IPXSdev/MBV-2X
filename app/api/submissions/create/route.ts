@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { track_title, artist_name, genre, mood_tags, description, file_url, file_size, duration } = body
+    const { track_title, artist_name, genre, mood_tags, file_url, file_size, duration } = body
 
     // Validate required fields
     if (!track_title || !artist_name || !genre) {
@@ -44,14 +44,22 @@ export async function POST(request: NextRequest) {
         artist_name,
         genre,
         mood_tags: mood_tags || [],
-        description,
         file_url,
         file_size: file_size || 0,
         duration: duration || 0,
         status: "pending",
         credits_used: 1,
+        created_at: new Date().toISOString(),
       })
-      .select()
+      .select(`
+        *,
+        users:user_id (
+          id,
+          name,
+          email,
+          tier
+        )
+      `)
       .single()
 
     if (submissionError) {

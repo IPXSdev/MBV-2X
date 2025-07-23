@@ -9,8 +9,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
 import { EnhancedAudioPlayer } from "@/components/ui/enhanced-audio-player"
-import { FileAudio, Star, CheckCircle, XCircle, Clock, User, Calendar, Music } from "lucide-react"
+import { FileAudio, Star, CheckCircle, XCircle, Clock, User, Calendar, Music, Download } from "lucide-react"
 import { formatRelativeTime, getStatusBadgeColor } from "@/lib/utils"
+import Image from "next/image"
 
 interface Submission {
   id: string
@@ -28,6 +29,8 @@ interface Submission {
   mood_tags?: string[]
   description?: string
   credits_used?: number
+  reviewed_by?: string
+  reviewed_at?: string
   users?: {
     id: string
     name: string
@@ -47,7 +50,7 @@ export function AdminSubmissions() {
   const [submissions, setSubmissions] = useState<Submission[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [filter, setFilter] = useState<"all" | "ranked" | "unranked" | "my_ranked">("all")
+  const [filter, setFilter] = useState<"all" | "ranked" | "unranked" | "my_ranked">("unranked")
   const [statusFilter, setStatusFilter] = useState<string | null>(null)
   const [pagination, setPagination] = useState<Pagination>({
     total: 0,
@@ -55,7 +58,6 @@ export function AdminSubmissions() {
     limit: 20,
     totalPages: 0,
   })
-  const [currentlyPlaying, setCurrentlyPlaying] = useState<string | null>(null)
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null)
   const [reviewDialogOpen, setReviewDialogOpen] = useState(false)
   const [reviewData, setReviewData] = useState({
@@ -120,7 +122,12 @@ export function AdminSubmissions() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(reviewData),
+        body: JSON.stringify({
+          rating: reviewData.rating,
+          feedback: reviewData.feedback,
+          status: reviewData.status,
+          mood_tags: reviewData.tags,
+        }),
       })
 
       if (!response.ok) {
@@ -138,6 +145,7 @@ export function AdminSubmissions() {
                 admin_feedback: reviewData.feedback,
                 status: reviewData.status,
                 mood_tags: reviewData.tags,
+                reviewed_at: new Date().toISOString(),
               }
             : sub,
         ),
@@ -145,6 +153,9 @@ export function AdminSubmissions() {
 
       setReviewDialogOpen(false)
       setSelectedSubmission(null)
+
+      // Reload submissions to update filters
+      loadSubmissions()
     } catch (error) {
       console.error("Error submitting review:", error)
       alert(error instanceof Error ? error.message : "Failed to submit review")
@@ -213,17 +224,17 @@ export function AdminSubmissions() {
                 className="w-full"
               >
                 <TabsList className="bg-gray-700">
-                  <TabsTrigger value="all" className="data-[state=active]:bg-gray-600">
-                    All
+                  <TabsTrigger value="unranked" className="data-[state=active]:bg-gray-600">
+                    Unranked ({submissions.filter((s) => !s.admin_rating).length})
                   </TabsTrigger>
                   <TabsTrigger value="ranked" className="data-[state=active]:bg-gray-600">
-                    Ranked
-                  </TabsTrigger>
-                  <TabsTrigger value="unranked" className="data-[state=active]:bg-gray-600">
-                    Unranked
+                    Ranked ({submissions.filter((s) => s.admin_rating).length})
                   </TabsTrigger>
                   <TabsTrigger value="my_ranked" className="data-[state=active]:bg-gray-600">
                     My Ranked
+                  </TabsTrigger>
+                  <TabsTrigger value="all" className="data-[state=active]:bg-gray-600">
+                    All
                   </TabsTrigger>
                 </TabsList>
               </Tabs>
@@ -274,8 +285,14 @@ export function AdminSubmissions() {
                   >
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center space-x-4">
-                        <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-500 rounded-lg flex items-center justify-center flex-shrink-0">
-                          <FileAudio className="h-6 w-6 text-white" />
+                        <div className="relative w-12 h-12 flex-shrink-0">
+                          <Image
+                            src="/images/default-album-art.png"
+                            alt="Album Art"
+                            width={48}
+                            height={48}
+                            className="rounded-lg object-cover"
+                          />
                         </div>
                         <div className="flex-1 min-w-0">
                           <h4 className="text-white font-medium truncate">{submission.track_title}</h4>
@@ -297,12 +314,22 @@ export function AdminSubmissions() {
                         {submission.admin_rating ? (
                           <div className="flex items-center space-x-1">
                             <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                            <span className="text-yellow-400 text-sm font-medium">{submission.admin_rating}</span>
+                            <span className="text-yellow-400 text-sm font-medium">{submission.admin_rating}/5</span>
                           </div>
                         ) : (
                           <Badge variant="outline" className="text-xs border-gray-500 text-gray-300">
                             Unrated
                           </Badge>
+                        )}
+                        {submission.file_url && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => window.open(submission.file_url, "_blank")}
+                            className="border-gray-600 bg-transparent hover:bg-gray-600"
+                          >
+                            <Download className="h-3 w-3" />
+                          </Button>
                         )}
                         <Button
                           size="sm"
@@ -408,13 +435,24 @@ export function AdminSubmissions() {
 
               <div className="flex flex-col md:flex-row gap-6">
                 <div className="md:w-1/3 space-y-4">
-                  <div>
-                    <h3 className="text-white font-medium text-lg">{selectedSubmission.track_title}</h3>
-                    <p className="text-gray-400">by {selectedSubmission.artist_name}</p>
-                    <div className="flex items-center space-x-2 mt-2">
-                      <Badge className={`${getStatusBadgeColor(selectedSubmission.status)} text-white`}>
-                        {selectedSubmission.status.replace("_", " ")}
-                      </Badge>
+                  <div className="flex items-center space-x-4">
+                    <div className="relative w-16 h-16 flex-shrink-0">
+                      <Image
+                        src="/images/default-album-art.png"
+                        alt="Album Art"
+                        width={64}
+                        height={64}
+                        className="rounded-lg object-cover"
+                      />
+                    </div>
+                    <div>
+                      <h3 className="text-white font-medium text-lg">{selectedSubmission.track_title}</h3>
+                      <p className="text-gray-400">by {selectedSubmission.artist_name}</p>
+                      <div className="flex items-center space-x-2 mt-2">
+                        <Badge className={`${getStatusBadgeColor(selectedSubmission.status)} text-white`}>
+                          {selectedSubmission.status.replace("_", " ")}
+                        </Badge>
+                      </div>
                     </div>
                   </div>
                   <div className="space-y-2">
@@ -432,12 +470,6 @@ export function AdminSubmissions() {
                       <div className="flex items-center space-x-2">
                         <Music className="h-4 w-4 text-gray-400" />
                         <span className="text-gray-300 text-sm">{selectedSubmission.genre}</span>
-                      </div>
-                    )}
-                    {selectedSubmission.description && (
-                      <div className="mt-4 p-3 bg-gray-700/50 rounded-lg">
-                        <h4 className="text-white font-medium text-sm mb-2">Artist Notes:</h4>
-                        <p className="text-gray-300 text-sm">{selectedSubmission.description}</p>
                       </div>
                     )}
                   </div>
@@ -518,6 +550,10 @@ export function AdminSubmissions() {
                         "Aggressive",
                         "Romantic",
                         "Mysterious",
+                        "Playful",
+                        "Intense",
+                        "Dreamy",
+                        "Nostalgic",
                       ].map((tag) => (
                         <Badge
                           key={tag}

@@ -1,77 +1,71 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getCurrentUser } from "@/lib/supabase/auth"
 import { createClient } from "@/lib/supabase/server"
-
-export const dynamic = "force-dynamic"
 
 export async function GET(request: NextRequest) {
   try {
-    const user = await getCurrentUser()
+    const supabase = createClient()
 
-    if (!user || !["admin", "master_dev"].includes(user.role)) {
+    // Get the current user
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
+
+    if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const searchParams = request.nextUrl.searchParams
+    // Check if user is admin or master dev
+    const { data: userData, error: userError } = await supabase.from("users").select("role").eq("id", user.id).single()
+
+    if (userError || !userData || !["admin", "master_dev"].includes(userData.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+
+    const { searchParams } = new URL(request.url)
+    const filter = searchParams.get("filter") || "all"
     const status = searchParams.get("status")
-    const filter = searchParams.get("filter") || "all" // all, ranked, unranked, my_ranked
     const page = Number.parseInt(searchParams.get("page") || "1")
     const limit = Number.parseInt(searchParams.get("limit") || "20")
     const offset = (page - 1) * limit
 
-    const supabase = await createClient()
-
-    let query = supabase.from("submissions").select(
-      `
-        id,
-        title,
-        artist_name,
-        genre,
-        mood_tags,
-        file_url,
-        file_size,
-        status,
-        admin_rating,
-        admin_feedback,
-        submitted_at,
-        updated_at,
-        credits_used,
-        description,
-        users (
+    let query = supabase.from("submissions").select(`
+        *,
+        users:user_id (
           id,
           name,
           email,
           tier
         )
-      `,
-      { count: "exact" },
-    )
+      `)
 
-    // Apply status filter if provided
-    if (status) {
-      query = query.eq("status", status)
-    }
-
-    // Apply ranking filter
+    // Apply filters
     if (filter === "ranked") {
       query = query.not("admin_rating", "is", null)
     } else if (filter === "unranked") {
       query = query.is("admin_rating", null)
     } else if (filter === "my_ranked") {
-      // This would require a join with a reviews table that tracks which admin reviewed which submission
-      // For now, we'll just return all ranked submissions
-      query = query.not("admin_rating", "is", null)
+      query = query.eq("reviewed_by", user.id)
     }
 
-    // Apply pagination
-    query = query.range(offset, offset + limit - 1).order("submitted_at", { ascending: false })
+    if (status) {
+      query = query.eq("status", status)
+    }
 
-    const { data: submissions, error, count } = await query
+    // Get total count for pagination
+    const { count } = await supabase.from("submissions").select("*", { count: "exact", head: true })
 
-    if (error) {
-      console.error("Error fetching submissions:", error)
+    // Apply pagination and ordering
+    const { data: submissions, error: submissionsError } = await query
+      .order("created_at", { ascending: false })
+      .range(offset, offset + limit - 1)
+
+    if (submissionsError) {
+      console.error("Error fetching submissions:", submissionsError)
       return NextResponse.json({ error: "Failed to fetch submissions" }, { status: 500 })
     }
+
+    const totalPages = Math.ceil((count || 0) / limit)
 
     return NextResponse.json({
       submissions: submissions || [],
@@ -79,11 +73,11 @@ export async function GET(request: NextRequest) {
         total: count || 0,
         page,
         limit,
-        totalPages: count ? Math.ceil(count / limit) : 0,
+        totalPages,
       },
     })
   } catch (error) {
-    console.error("Error in admin submissions route:", error)
+    console.error("Admin submissions error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
