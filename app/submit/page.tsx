@@ -1,5 +1,15 @@
 "use client"
 import { useState, useEffect } from "react"
+import { SelectItem } from "@/components/ui/select"
+
+import { SelectContent } from "@/components/ui/select"
+
+import { SelectValue } from "@/components/ui/select"
+
+import { SelectTrigger } from "@/components/ui/select"
+
+import { Select } from "@/components/ui/select"
+
 import type React from "react"
 
 import { useRouter } from "next/navigation"
@@ -7,8 +17,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Progress } from "@/components/ui/progress"
 import { EnhancedAudioPlayer } from "@/components/ui/enhanced-audio-player"
@@ -174,10 +182,6 @@ export default function SubmitPage() {
       ...formData,
       genre: value,
     })
-  }
-
-  const handleMoodTagChange = (value: string) => {
-    setSelectedMoodTag(value)
   }
 
   const validateForm = () => {
@@ -498,7 +502,7 @@ export default function SubmitPage() {
                 </div>
               </div>
 
-              {/* Mood Tag - Single Selection */}
+              {/* Mood Tag - Clickable Bubbles */}
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-white flex items-center">
                   <Tag className="h-5 w-5 mr-2 text-purple-400" />
@@ -506,30 +510,24 @@ export default function SubmitPage() {
                 </h3>
                 <p className="text-gray-400 text-sm">Select the mood that best describes your track</p>
 
-                <div>
-                  <Select onValueChange={handleMoodTagChange} value={selectedMoodTag}>
-                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white focus:border-purple-500">
-                      <SelectValue placeholder="Select your track's mood" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-gray-700 border-gray-600">
-                      {moodTags.map((tag) => (
-                        <SelectItem key={tag} value={tag} className="text-white hover:bg-gray-600">
-                          {tag}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {errors.moodTag && <p className="text-red-400 text-sm mt-1">{errors.moodTag}</p>}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                  {moodTags.map((tag) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => setSelectedMoodTag(tag)}
+                      className={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 border ${
+                        selectedMoodTag === tag
+                          ? "bg-gradient-to-r from-purple-500 to-blue-500 text-white border-transparent shadow-lg transform scale-105"
+                          : "bg-gray-700 text-gray-300 border-gray-600 hover:bg-gray-600 hover:text-white hover:border-gray-500"
+                      }`}
+                    >
+                      {tag}
+                    </button>
+                  ))}
                 </div>
 
-                {/* Show selected mood tag */}
-                {selectedMoodTag && (
-                  <div className="mt-2">
-                    <Badge className="bg-gradient-to-r from-purple-500 to-blue-500 text-white border-transparent">
-                      {selectedMoodTag}
-                    </Badge>
-                  </div>
-                )}
+                {errors.moodTag && <p className="text-red-400 text-sm mt-1">{errors.moodTag}</p>}
               </div>
 
               {/* File Upload */}

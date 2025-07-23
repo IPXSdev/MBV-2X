@@ -224,139 +224,141 @@ export function EnhancedAudioPlayer({
   }
 
   return (
-    <Card className="bg-gradient-to-br from-gray-800/80 to-gray-900/80 border-gray-700/50 backdrop-blur-sm shadow-2xl">
-      <CardContent className="p-6">
-        <div className="flex items-start space-x-6">
-          {/* Album Art */}
-          <div className="relative w-24 h-24 rounded-xl overflow-hidden flex-shrink-0 shadow-lg">
-            <Image
-              src={albumArt || "/images/default-album-art.png"}
-              alt={`${title} album art`}
-              fill
-              className="object-cover transition-transform duration-300 hover:scale-105"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
-          </div>
-
-          {/* Track Info & Controls */}
-          <div className="flex-1 space-y-4">
-            {/* Track Info */}
-            <div>
-              <h3 className="text-xl font-bold text-white mb-1">{title}</h3>
-              <p className="text-gray-300 font-medium">{artist}</p>
+    <div className="w-full max-w-full overflow-hidden">
+      <Card className="bg-gradient-to-br from-gray-800/80 to-gray-900/80 border-gray-700/50 backdrop-blur-sm shadow-2xl">
+        <CardContent className="p-6">
+          <div className="flex flex-col lg:flex-row items-start space-y-4 lg:space-y-0 lg:space-x-6">
+            {/* Album Art */}
+            <div className="relative w-24 h-24 rounded-xl overflow-hidden flex-shrink-0 shadow-lg mx-auto lg:mx-0">
+              <Image
+                src={albumArt || "/images/default-album-art.png"}
+                alt={`${title} album art`}
+                fill
+                className="object-cover transition-transform duration-300 hover:scale-105"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
             </div>
 
-            {/* Waveform */}
-            {showWaveform && waveformData.length > 0 && (
-              <div className="relative h-16 bg-gray-800/50 rounded-lg overflow-hidden">
-                <div className="flex items-end justify-center h-full px-2 space-x-1">
-                  {waveformData.map((amplitude, index) => {
-                    const height = Math.max(amplitude * 100, 2)
-                    const isActive = (index / waveformData.length) * 100 <= progress
-                    return (
-                      <div
-                        key={index}
-                        className={`w-1 rounded-full transition-all duration-150 ${
-                          isActive ? "bg-gradient-to-t from-purple-500 to-blue-400 shadow-sm" : "bg-gray-600/50"
-                        }`}
-                        style={{ height: `${height}%` }}
-                      />
-                    )
-                  })}
+            {/* Track Info & Controls */}
+            <div className="flex-1 w-full min-w-0 space-y-4">
+              {/* Track Info */}
+              <div className="text-center lg:text-left">
+                <h3 className="text-xl font-bold text-white mb-1 truncate">{title}</h3>
+                <p className="text-gray-300 font-medium truncate">{artist}</p>
+              </div>
+
+              {/* Waveform */}
+              {showWaveform && waveformData.length > 0 && (
+                <div className="relative h-16 bg-gray-800/50 rounded-lg overflow-hidden w-full">
+                  <div className="flex items-end justify-center h-full px-2 space-x-1">
+                    {waveformData.map((amplitude, index) => {
+                      const height = Math.max(amplitude * 100, 2)
+                      const isActive = (index / waveformData.length) * 100 <= progress
+                      return (
+                        <div
+                          key={index}
+                          className={`flex-1 max-w-[4px] rounded-full transition-all duration-150 ${
+                            isActive ? "bg-gradient-to-t from-purple-500 to-blue-400 shadow-sm" : "bg-gray-600/50"
+                          }`}
+                          style={{ height: `${height}%` }}
+                        />
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Progress Bar */}
+              <div className="space-y-2 w-full">
+                <Slider value={[progress]} onValueChange={handleSeek} max={100} step={0.1} className="w-full" />
+                <div className="flex justify-between text-sm text-gray-400">
+                  <span>{formatTime(currentTime)}</span>
+                  <span>{formatTime(audioDuration)}</span>
                 </div>
               </div>
-            )}
 
-            {/* Progress Bar */}
-            <div className="space-y-2">
-              <Slider value={[progress]} onValueChange={handleSeek} max={100} step={0.1} className="w-full" />
-              <div className="flex justify-between text-sm text-gray-400">
-                <span>{formatTime(currentTime)}</span>
-                <span>{formatTime(audioDuration)}</span>
-              </div>
-            </div>
-
-            {/* Controls */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <Button
-                  onClick={() => setIsShuffle(!isShuffle)}
-                  size="sm"
-                  variant="ghost"
-                  className={`text-white hover:bg-gray-700/50 ${isShuffle ? "text-blue-400" : "text-gray-400"}`}
-                >
-                  <Shuffle className="h-4 w-4" />
-                </Button>
-
-                <Button onClick={skipBackward} size="sm" variant="ghost" className="text-white hover:bg-gray-700/50">
-                  <SkipBack className="h-4 w-4" />
-                </Button>
-
-                <Button
-                  onClick={togglePlayPause}
-                  disabled={isLoading}
-                  className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white border-0 w-12 h-12 rounded-full shadow-lg"
-                >
-                  {isLoading ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                  ) : isPlaying ? (
-                    <Pause className="h-5 w-5" />
-                  ) : (
-                    <Play className="h-5 w-5 ml-0.5" />
-                  )}
-                </Button>
-
-                <Button onClick={skipForward} size="sm" variant="ghost" className="text-white hover:bg-gray-700/50">
-                  <SkipForward className="h-4 w-4" />
-                </Button>
-
-                <Button
-                  onClick={() => setIsRepeat(!isRepeat)}
-                  size="sm"
-                  variant="ghost"
-                  className={`text-white hover:bg-gray-700/50 ${isRepeat ? "text-blue-400" : "text-gray-400"}`}
-                >
-                  <Repeat className="h-4 w-4" />
-                </Button>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Button
-                  onClick={() => setIsLiked(!isLiked)}
-                  size="sm"
-                  variant="ghost"
-                  className={`text-white hover:bg-gray-700/50 ${isLiked ? "text-red-400" : "text-gray-400"}`}
-                >
-                  <Heart className={`h-4 w-4 ${isLiked ? "fill-current" : ""}`} />
-                </Button>
-
-                <Button size="sm" variant="ghost" className="text-white hover:bg-gray-700/50">
-                  <Share2 className="h-4 w-4" />
-                </Button>
-
-                <Button size="sm" variant="ghost" className="text-white hover:bg-gray-700/50">
-                  <Download className="h-4 w-4" />
-                </Button>
-
-                <div className="flex items-center space-x-2 ml-4">
-                  <Button onClick={toggleMute} size="sm" variant="ghost" className="text-white hover:bg-gray-700/50">
-                    {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+              {/* Controls */}
+              <div className="flex flex-col sm:flex-row items-center justify-between space-y-4 sm:space-y-0 w-full">
+                <div className="flex items-center space-x-2">
+                  <Button
+                    onClick={() => setIsShuffle(!isShuffle)}
+                    size="sm"
+                    variant="ghost"
+                    className={`text-white hover:bg-gray-700/50 ${isShuffle ? "text-blue-400" : "text-gray-400"}`}
+                  >
+                    <Shuffle className="h-4 w-4" />
                   </Button>
-                  <Slider
-                    value={[isMuted ? 0 : volume * 100]}
-                    onValueChange={handleVolumeChange}
-                    max={100}
-                    step={1}
-                    className="w-20"
-                  />
+
+                  <Button onClick={skipBackward} size="sm" variant="ghost" className="text-white hover:bg-gray-700/50">
+                    <SkipBack className="h-4 w-4" />
+                  </Button>
+
+                  <Button
+                    onClick={togglePlayPause}
+                    disabled={isLoading}
+                    className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white border-0 w-12 h-12 rounded-full shadow-lg"
+                  >
+                    {isLoading ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                    ) : isPlaying ? (
+                      <Pause className="h-5 w-5" />
+                    ) : (
+                      <Play className="h-5 w-5 ml-0.5" />
+                    )}
+                  </Button>
+
+                  <Button onClick={skipForward} size="sm" variant="ghost" className="text-white hover:bg-gray-700/50">
+                    <SkipForward className="h-4 w-4" />
+                  </Button>
+
+                  <Button
+                    onClick={() => setIsRepeat(!isRepeat)}
+                    size="sm"
+                    variant="ghost"
+                    className={`text-white hover:bg-gray-700/50 ${isRepeat ? "text-blue-400" : "text-gray-400"}`}
+                  >
+                    <Repeat className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <Button
+                    onClick={() => setIsLiked(!isLiked)}
+                    size="sm"
+                    variant="ghost"
+                    className={`text-white hover:bg-gray-700/50 ${isLiked ? "text-red-400" : "text-gray-400"}`}
+                  >
+                    <Heart className={`h-4 w-4 ${isLiked ? "fill-current" : ""}`} />
+                  </Button>
+
+                  <Button size="sm" variant="ghost" className="text-white hover:bg-gray-700/50">
+                    <Share2 className="h-4 w-4" />
+                  </Button>
+
+                  <Button size="sm" variant="ghost" className="text-white hover:bg-gray-700/50">
+                    <Download className="h-4 w-4" />
+                  </Button>
+
+                  <div className="flex items-center space-x-2 ml-4">
+                    <Button onClick={toggleMute} size="sm" variant="ghost" className="text-white hover:bg-gray-700/50">
+                      {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+                    </Button>
+                    <Slider
+                      value={[isMuted ? 0 : volume * 100]}
+                      onValueChange={handleVolumeChange}
+                      max={100}
+                      step={1}
+                      className="w-20"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <audio ref={audioRef} src={src} preload="metadata" />
-      </CardContent>
-    </Card>
+          <audio ref={audioRef} src={src} preload="metadata" />
+        </CardContent>
+      </Card>
+    </div>
   )
 }

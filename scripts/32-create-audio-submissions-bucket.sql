@@ -1,117 +1,126 @@
--- Enable the storage extension if not already enabled
-CREATE EXTENSION IF NOT EXISTS "storage" SCHEMA "extensions";
+-- Create audio submissions bucket with proper configuration
+-- This script ensures the bucket exists and is properly configured
 
--- First, check if bucket exists and delete if it does to recreate properly
-DELETE FROM storage.buckets WHERE id = 'audio-submissions';
+-- First, check if bucket exists and delete if it does (for clean setup)
+DO $$
+BEGIN
+    -- Delete bucket if it exists
+    DELETE FROM storage.buckets WHERE id = 'audio-submissions';
+    
+    -- Create the bucket
+    INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+    VALUES (
+        'audio-submissions',
+        'audio-submissions',
+        true,
+        52428800, -- 50MB limit
+        ARRAY[
+            'audio/mpeg',
+            'audio/mp3',
+            'audio/wav',
+            'audio/wave',
+            'audio/x-wav',
+            'audio/flac',
+            'audio/x-flac',
+            'audio/aac',
+            'audio/mp4',
+            'audio/m4a',
+            'audio/ogg',
+            'audio/webm'
+        ]
+    );
+    
+    RAISE NOTICE 'Audio submissions bucket created successfully';
+    
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE NOTICE 'Error creating bucket: %', SQLERRM;
+END $$;
 
--- Create the audio-submissions storage bucket with proper configuration
-INSERT INTO storage.buckets (
-  id, 
-  name, 
-  public, 
-  file_size_limit, 
-  allowed_mime_types,
-  avif_autodetection,
-  created_at,
-  updated_at
-)
+-- Set up RLS policies for the bucket
+-- Allow authenticated users to upload files
+INSERT INTO storage.policies (bucket_id, name, definition, check_definition, command)
 VALUES (
-  'audio-submissions',
-  'audio-submissions',
-  true,
-  52428800, -- 50MB limit
-  ARRAY[
-    'audio/mpeg', 
-    'audio/wav', 
-    'audio/flac', 
-    'audio/mp3', 
-    'audio/x-wav', 
-    'audio/x-flac', 
-    'audio/aac', 
-    'audio/ogg',
-    'audio/mp4',
-    'audio/x-m4a'
-  ],
-  false,
-  NOW(),
-  NOW()
-);
+    'audio-submissions',
+    'Allow authenticated users to upload',
+    'auth.role() = ''authenticated''',
+    'auth.role() = ''authenticated''',
+    'INSERT'
+) ON CONFLICT (bucket_id, name) DO UPDATE SET
+    definition = EXCLUDED.definition,
+    check_definition = EXCLUDED.check_definition;
 
--- Ensure RLS is enabled on storage.objects
-ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+-- Allow public read access to files
+INSERT INTO storage.policies (bucket_id, name, definition, check_definition, command)
+VALUES (
+    'audio-submissions',
+    'Allow public read access',
+    'true',
+    'true',
+    'SELECT'
+) ON CONFLICT (bucket_id, name) DO UPDATE SET
+    definition = EXCLUDED.definition,
+    check_definition = EXCLUDED.check_definition;
 
--- Drop all existing policies for this bucket to start fresh
-DROP POLICY IF EXISTS "Users can upload audio files" ON storage.objects;
-DROP POLICY IF EXISTS "Users can view audio files" ON storage.objects;
-DROP POLICY IF EXISTS "Admins can view all audio files" ON storage.objects;
-DROP POLICY IF EXISTS "Public read access for audio files" ON storage.objects;
-DROP POLICY IF EXISTS "Users can upload their own audio files" ON storage.objects;
-DROP POLICY IF EXISTS "Users can view their own audio files" ON storage.objects;
+-- Allow users to update their own files
+INSERT INTO storage.policies (bucket_id, name, definition, check_definition, command)
+VALUES (
+    'audio-submissions',
+    'Allow users to update own files',
+    'auth.role() = ''authenticated''',
+    'auth.role() = ''authenticated''',
+    'UPDATE'
+) ON CONFLICT (bucket_id, name) DO UPDATE SET
+    definition = EXCLUDED.definition,
+    check_definition = EXCLUDED.check_definition;
 
--- Create comprehensive RLS policies for the audio-submissions bucket
+-- Allow users to delete their own files
+INSERT INTO storage.policies (bucket_id, name, definition, check_definition, command)
+VALUES (
+    'audio-submissions',
+    'Allow users to delete own files',
+    'auth.role() = ''authenticated''',
+    'auth.role() = ''authenticated''',
+    'DELETE'
+) ON CONFLICT (bucket_id, name) DO UPDATE SET
+    definition = EXCLUDED.definition,
+    check_definition = EXCLUDED.check_definition;
 
--- Policy 1: Allow authenticated users to upload files to audio-submissions bucket
-CREATE POLICY "Allow authenticated uploads to audio-submissions" ON storage.objects
-FOR INSERT 
-TO authenticated
-WITH CHECK (
-  bucket_id = 'audio-submissions'
-);
-
--- Policy 2: Allow public read access to audio-submissions bucket (for playback)
-CREATE POLICY "Allow public read access to audio-submissions" ON storage.objects
-FOR SELECT 
-TO public
-USING (
-  bucket_id = 'audio-submissions'
-);
-
--- Policy 3: Allow authenticated users to view files in audio-submissions bucket
-CREATE POLICY "Allow authenticated read access to audio-submissions" ON storage.objects
-FOR SELECT 
-TO authenticated
-USING (
-  bucket_id = 'audio-submissions'
-);
-
--- Policy 4: Allow admins to manage all files in audio-submissions bucket
-CREATE POLICY "Allow admin management of audio-submissions" ON storage.objects
-FOR ALL
-TO authenticated
-USING (
-  bucket_id = 'audio-submissions' AND
-  EXISTS (
-    SELECT 1 FROM users 
-    WHERE users.id::text = auth.uid()::text 
-    AND users.role IN ('admin', 'master_dev')
-  )
-);
-
--- Grant necessary permissions to roles
-GRANT ALL ON storage.objects TO authenticated;
-GRANT ALL ON storage.buckets TO authenticated;
-GRANT SELECT ON storage.objects TO anon;
-
--- Verify the bucket was created successfully
+-- Verify the bucket was created
 SELECT 
-  id,
-  name,
-  public,
-  file_size_limit,
-  allowed_mime_types,
-  created_at
+    id,
+    name,
+    public,
+    file_size_limit,
+    allowed_mime_types,
+    created_at
 FROM storage.buckets 
 WHERE id = 'audio-submissions';
 
--- Also verify the policies were created
+-- Verify policies were created
 SELECT 
-  schemaname,
-  tablename,
-  policyname,
-  permissive,
-  roles,
-  cmd,
-  qual
-FROM pg_policies 
-WHERE tablename = 'objects' 
-AND policyname LIKE '%audio-submissions%';
+    bucket_id,
+    name,
+    definition,
+    command
+FROM storage.policies 
+WHERE bucket_id = 'audio-submissions'
+ORDER BY name;
+
+-- Final verification message
+DO $$
+DECLARE
+    bucket_count INTEGER;
+    policy_count INTEGER;
+BEGIN
+    SELECT COUNT(*) INTO bucket_count FROM storage.buckets WHERE id = 'audio-submissions';
+    SELECT COUNT(*) INTO policy_count FROM storage.policies WHERE bucket_id = 'audio-submissions';
+    
+    IF bucket_count = 1 AND policy_count >= 4 THEN
+        RAISE NOTICE 'SUCCESS: Audio submissions bucket and policies configured correctly';
+        RAISE NOTICE 'Bucket count: %, Policy count: %', bucket_count, policy_count;
+    ELSE
+        RAISE NOTICE 'WARNING: Configuration may be incomplete';
+        RAISE NOTICE 'Bucket count: %, Policy count: %', bucket_count, policy_count;
+    END IF;
+END $$;
