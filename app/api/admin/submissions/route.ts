@@ -1,25 +1,20 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { getCurrentUser } from "@/lib/supabase/auth"
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createClient()
+    // Use the custom auth system instead of Supabase auth
+    const user = await getCurrentUser()
 
-    // Get the current user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
+    if (!user) {
+      console.error("No authenticated user found")
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     // Check if user is admin or master dev
-    const { data: userData, error: userError } = await supabase.from("users").select("role").eq("id", user.id).single()
-
-    if (userError || !userData || !["admin", "master_dev"].includes(userData.role)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    if (!["admin", "master_dev"].includes(user.role)) {
+      console.error("User role not authorized:", user.role)
+      return NextResponse.json({ error: "Forbidden - Admin access required" }, { status: 403 })
     }
 
     const { searchParams } = new URL(request.url)
@@ -29,8 +24,26 @@ export async function GET(request: NextRequest) {
     const limit = Number.parseInt(searchParams.get("limit") || "20")
     const offset = (page - 1) * limit
 
+    // Use service client for database operations
+    const { createClient } = await import("@supabase/supabase-js")
+    const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+
     let query = supabase.from("submissions").select(`
-        *,
+        id,
+        title,
+        artist_name,
+        genre,
+        status,
+        admin_rating,
+        admin_feedback,
+        created_at,
+        updated_at,
+        file_url,
+        file_size,
+        mood_tags,
+        description,
+        user_id,
+        reviewed_by,
         users:user_id (
           id,
           name,
@@ -48,12 +61,16 @@ export async function GET(request: NextRequest) {
       query = query.eq("reviewed_by", user.id)
     }
 
-    if (status) {
+    if (status && status !== "all") {
       query = query.eq("status", status)
     }
 
     // Get total count for pagination
-    const { count } = await supabase.from("submissions").select("*", { count: "exact", head: true })
+    const { count, error: countError } = await supabase.from("submissions").select("*", { count: "exact", head: true })
+
+    if (countError) {
+      console.error("Count error:", countError)
+    }
 
     // Apply pagination and ordering
     const { data: submissions, error: submissionsError } = await query
@@ -62,7 +79,13 @@ export async function GET(request: NextRequest) {
 
     if (submissionsError) {
       console.error("Error fetching submissions:", submissionsError)
-      return NextResponse.json({ error: "Failed to fetch submissions" }, { status: 500 })
+      return NextResponse.json(
+        {
+          error: "Failed to fetch submissions",
+          details: submissionsError.message,
+        },
+        { status: 500 },
+      )
     }
 
     const totalPages = Math.ceil((count || 0) / limit)
@@ -78,6 +101,12 @@ export async function GET(request: NextRequest) {
     })
   } catch (error) {
     console.error("Admin submissions error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    return NextResponse.json(
+      {
+        error: "Internal server error",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 500 },
+    )
   }
 }
