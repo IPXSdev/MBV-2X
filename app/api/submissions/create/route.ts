@@ -1,9 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/supabase/auth"
+import { createClient } from "@supabase/supabase-js"
+
+export const dynamic = "force-dynamic"
 
 export async function POST(request: NextRequest) {
   try {
-    // Use the custom auth system
+    // Use custom auth system
     const user = await getCurrentUser()
 
     if (!user) {
@@ -14,115 +17,72 @@ export async function POST(request: NextRequest) {
     if (user.role !== "master_dev" && user.submission_credits <= 0) {
       return NextResponse.json(
         {
-          error: "No submission credits available. Please upgrade your plan or purchase credits.",
+          error: "No submission credits remaining",
+          message: "You need submission credits to submit music",
         },
         { status: 400 },
       )
     }
 
-    const formData = await request.formData()
+    const body = await request.json()
+
+    // Transform old format to new format if needed
+    const submissionData = {
+      track_title: body.track_title || body.title,
+      artist_name: body.artist_name || body.artistName,
+      genre: body.genre,
+      mood_tags: Array.isArray(body.mood_tags) ? body.mood_tags : body.moodTags ? JSON.parse(body.moodTags) : [],
+      description: body.description,
+      file_url: body.file_url,
+      file_size: body.file_size || 0,
+      duration: body.duration || 0,
+    }
 
     // Validate required fields
-    const title = formData.get("title") as string
-    const artistName = formData.get("artistName") as string
-    const genre = formData.get("genre") as string
-    const description = formData.get("description") as string
-    const audioFile = formData.get("audioFile") as File
-
-    if (!title || !artistName || !genre || !audioFile) {
+    if (!submissionData.track_title || !submissionData.artist_name || !submissionData.genre) {
       return NextResponse.json(
         {
-          error: "Missing required fields: title, artistName, genre, and audioFile are required",
-        },
-        { status: 400 },
-      )
-    }
-
-    // Validate file type
-    const allowedTypes = ["audio/mpeg", "audio/wav", "audio/mp3", "audio/x-wav"]
-    if (!allowedTypes.includes(audioFile.type)) {
-      return NextResponse.json(
-        {
-          error: "Invalid file type. Please upload MP3 or WAV files only.",
-        },
-        { status: 400 },
-      )
-    }
-
-    // Validate file size (50MB limit)
-    const maxSize = 50 * 1024 * 1024 // 50MB
-    if (audioFile.size > maxSize) {
-      return NextResponse.json(
-        {
-          error: "File too large. Maximum size is 50MB.",
+          error: "Missing required fields",
+          message: "Track title, artist name, and genre are required",
         },
         { status: 400 },
       )
     }
 
     // Use service client for database operations
-    const { createClient } = await import("@supabase/supabase-js")
     const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
-    // Upload file to Supabase Storage
-    const fileName = `${user.id}/${Date.now()}-${audioFile.name}`
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from("audio-submissions")
-      .upload(fileName, audioFile)
-
-    if (uploadError) {
-      console.error("File upload error:", uploadError)
-      return NextResponse.json(
-        {
-          error: "Failed to upload file",
-          details: uploadError.message,
-        },
-        { status: 500 },
-      )
-    }
-
-    // Get the public URL for the uploaded file
-    const { data: urlData } = supabase.storage.from("audio-submissions").getPublicUrl(fileName)
-
-    // Parse mood tags if provided
-    let moodTags: string[] = []
-    const moodTagsString = formData.get("moodTags") as string
-    if (moodTagsString) {
-      try {
-        moodTags = JSON.parse(moodTagsString)
-      } catch {
-        // If parsing fails, treat as comma-separated string
-        moodTags = moodTagsString
-          .split(",")
-          .map((tag) => tag.trim())
-          .filter(Boolean)
-      }
-    }
-
-    // Create submission record
+    // Create submission
     const { data: submission, error: submissionError } = await supabase
       .from("submissions")
       .insert({
         user_id: user.id,
-        title: title.trim(),
-        artist_name: artistName.trim(),
-        genre: genre.trim(),
-        description: description?.trim() || null,
-        file_url: urlData.publicUrl,
-        file_size: audioFile.size,
-        mood_tags: moodTags,
+        track_title: submissionData.track_title,
+        artist_name: submissionData.artist_name,
+        genre: submissionData.genre,
+        mood_tags: submissionData.mood_tags,
+        description: submissionData.description,
+        file_url: submissionData.file_url,
+        file_size: submissionData.file_size,
+        duration: submissionData.duration,
         status: "pending",
+        credits_used: 1,
         created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       })
-      .select()
+      .select(`
+        *,
+        users:user_id (
+          id,
+          name,
+          email,
+          tier
+        )
+      `)
       .single()
 
     if (submissionError) {
-      console.error("Submission creation error:", submissionError)
-
-      // Clean up uploaded file if submission creation fails
-      await supabase.storage.from("audio-submissions").remove([fileName])
-
+      console.error("Submission error:", submissionError)
       return NextResponse.json(
         {
           error: "Failed to create submission",
@@ -137,24 +97,24 @@ export async function POST(request: NextRequest) {
       const { error: creditError } = await supabase
         .from("users")
         .update({
-          submission_credits: user.submission_credits - 1,
+          submission_credits: Math.max(0, user.submission_credits - 1),
           updated_at: new Date().toISOString(),
         })
         .eq("id", user.id)
 
       if (creditError) {
         console.error("Credit deduction error:", creditError)
-        // Don't fail the submission, but log the error
+        // Don't fail the submission if credit deduction fails
       }
     }
 
     return NextResponse.json({
       success: true,
-      message: "Submission created successfully",
       submission,
+      message: "Track submitted successfully!",
     })
   } catch (error) {
-    console.error("Submission creation error:", error)
+    console.error("Error in submission creation:", error)
     return NextResponse.json(
       {
         error: "Internal server error",
