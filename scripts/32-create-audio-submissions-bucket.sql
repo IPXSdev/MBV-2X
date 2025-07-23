@@ -14,6 +14,9 @@ BEGIN
         DELETE FROM storage.buckets WHERE id = 'audio-submissions';
     END IF;
     
+    -- Ensure the storage extension is available
+    CREATE EXTENSION IF NOT EXISTS "storage" SCHEMA "extensions";
+
     -- Create the bucket
     INSERT INTO storage.buckets (
         id, 
@@ -65,14 +68,14 @@ DROP POLICY IF EXISTS "Allow admin management of audio-submissions" ON storage.o
 
 -- Create RLS policies for the audio-submissions bucket
 
--- Policy 1: Allow authenticated users to upload files
-CREATE POLICY "Allow authenticated uploads to audio-submissions" 
+-- Policy 1: Allow public users to upload files
+CREATE POLICY "Allow public uploads to audio-submissions" 
 ON storage.objects FOR INSERT 
-TO authenticated
+TO public
 WITH CHECK (bucket_id = 'audio-submissions');
 
 -- Policy 2: Allow public read access (for playback)
-CREATE POLICY "Allow public read access to audio-submissions" 
+CREATE POLICY "Allow public reads from audio-submissions" 
 ON storage.objects FOR SELECT 
 TO public
 USING (bucket_id = 'audio-submissions');
@@ -136,16 +139,22 @@ BEGIN
     END IF;
 END $$;
 
--- List all policies for verification
+-- Verify the bucket was created
 SELECT 
-    schemaname,
-    tablename,
-    policyname,
-    permissive,
-    roles,
-    cmd,
-    qual
+  'Bucket created successfully' as status,
+  id,
+  name,
+  public,
+  file_size_limit,
+  array_length(allowed_mime_types, 1) as mime_types_count
+FROM storage.buckets 
+WHERE id = 'audio-submissions';
+
+-- Show policies
+SELECT 
+  'Policies created' as status,
+  policyname,
+  cmd
 FROM pg_policies 
 WHERE tablename = 'objects' 
-AND policyname LIKE '%audio-submissions%'
-ORDER BY policyname;
+AND policyname LIKE '%audio-submissions%';

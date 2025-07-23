@@ -1,14 +1,12 @@
 "use client"
 import { useState, useEffect } from "react"
-import { Select } from "@/components/ui/select"
-
 import type React from "react"
-
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Progress } from "@/components/ui/progress"
 import { EnhancedAudioPlayer } from "@/components/ui/enhanced-audio-player"
@@ -25,6 +23,7 @@ import {
   ArrowLeft,
   Music,
   Sparkles,
+  RefreshCw,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 
@@ -99,12 +98,22 @@ export default function SubmitPage() {
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [success, setSuccess] = useState(false)
+  const [bucketStatus, setBucketStatus] = useState<{
+    exists: boolean
+    checking: boolean
+    error: string | null
+  }>({
+    exists: false,
+    checking: true,
+    error: null,
+  })
   const router = useRouter()
   const [audioDuration, setAudioDuration] = useState<number | null>(null)
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
 
   useEffect(() => {
     checkAuth()
+    checkBucketStatus()
   }, [])
 
   const checkAuth = async () => {
@@ -116,13 +125,11 @@ export default function SubmitPage() {
 
         // Check if user can submit
         if (userData.user.tier === "creator" && userData.user.submission_credits === 0) {
-          // Redirect to upgrade page
           router.push("/pricing?reason=submit")
           return
         }
 
         if (userData.user.submission_credits === 0) {
-          // Redirect to buy credits
           router.push("/pricing?reason=credits")
           return
         }
@@ -134,6 +141,37 @@ export default function SubmitPage() {
       router.push("/login?redirect=/submit")
     } finally {
       setLoading(false)
+    }
+  }
+
+  const checkBucketStatus = async () => {
+    setBucketStatus({ exists: false, checking: true, error: null })
+
+    try {
+      const response = await fetch("/api/debug/bucket-status")
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+
+      const data = await response.json()
+
+      if (data.success && data.audioSubmissionsBucket) {
+        setBucketStatus({ exists: true, checking: false, error: null })
+      } else {
+        setBucketStatus({
+          exists: false,
+          checking: false,
+          error: "Audio submissions bucket not found",
+        })
+      }
+    } catch (error) {
+      console.error("Bucket status check failed:", error)
+      setBucketStatus({
+        exists: false,
+        checking: false,
+        error: error instanceof Error ? error.message : "Failed to check bucket status",
+      })
     }
   }
 
@@ -197,36 +235,17 @@ export default function SubmitPage() {
     return Object.keys(tempErrors).length === 0
   }
 
-  const checkBucketStatus = async () => {
-    try {
-      console.log("Checking bucket status...")
-      const response = await fetch("/api/debug/bucket-status")
-
-      if (!response.ok) {
-        console.error("Bucket status check failed:", response.status, response.statusText)
-        return false
-      }
-
-      const data = await response.json()
-      console.log("Bucket status response:", data)
-
-      const bucketExists = data.audioSubmissionsBucket !== null
-      const canUpload = data.uploadTest?.canCreateUploadUrl !== false
-
-      console.log("Bucket exists:", bucketExists)
-      console.log("Can upload:", canUpload)
-
-      return bucketExists && canUpload
-    } catch (error) {
-      console.error("Error checking bucket status:", error)
-      return false
-    }
-  }
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     if (!validateForm()) {
+      return
+    }
+
+    if (!bucketStatus.exists) {
+      setErrors({
+        submit: "Storage bucket is not configured. Please contact support or run the bucket creation script.",
+      })
       return
     }
 
@@ -239,21 +258,6 @@ export default function SubmitPage() {
       // Upload file to Supabase storage if selected
       if (selectedFile) {
         const supabase = createClient()
-
-        // Check bucket status first
-        setUploadProgress(10)
-        console.log("Checking if bucket exists before upload...")
-
-        const bucketStatus = await checkBucketStatus()
-
-        if (!bucketStatus) {
-          console.error("Bucket check failed")
-          throw new Error(
-            "Audio submissions storage is not properly configured. Please run the bucket creation script: scripts/32-create-audio-submissions-bucket.sql",
-          )
-        }
-
-        console.log("Bucket check passed, proceeding with upload...")
 
         const fileExt = selectedFile.name.split(".").pop()
         const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
@@ -278,12 +282,7 @@ export default function SubmitPage() {
 
         if (uploadError) {
           console.error("Upload error details:", uploadError)
-          console.error("Upload error code:", uploadError.statusCode)
-          console.error("Upload error message:", uploadError.message)
-
-          throw new Error(
-            `Upload failed: ${uploadError.message}. Please ensure the storage bucket exists and is properly configured.`,
-          )
+          throw new Error(`Upload failed: ${uploadError.message}`)
         }
 
         console.log("Upload successful:", uploadData)
@@ -309,7 +308,7 @@ export default function SubmitPage() {
           track_title: formData.title,
           artist_name: formData.artistName,
           genre: formData.genre,
-          mood_tags: [selectedMoodTag], // Send as array with single item
+          mood_tags: [selectedMoodTag],
           file_url: fileUrl,
           file_size: selectedFile?.size || 0,
           duration: audioDuration || 0,
@@ -422,6 +421,39 @@ export default function SubmitPage() {
           )}
         </div>
 
+        {/* Bucket Status Alert */}
+        {bucketStatus.checking && (
+          <Alert className="mb-6 bg-blue-500/20 border-blue-500/30">
+            <RefreshCw className="h-4 w-4 animate-spin" />
+            <AlertDescription className="text-blue-300">Checking storage configuration...</AlertDescription>
+          </Alert>
+        )}
+
+        {!bucketStatus.checking && !bucketStatus.exists && (
+          <Alert variant="destructive" className="mb-6 bg-red-500/20 border-red-500/30">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription className="text-red-300">
+              <div className="space-y-2">
+                <p>Storage bucket is not configured properly.</p>
+                <p className="text-sm">
+                  Error: {bucketStatus.error}
+                  <br />
+                  Please run the bucket creation script or contact support.
+                </p>
+                <Button
+                  onClick={checkBucketStatus}
+                  size="sm"
+                  variant="outline"
+                  className="mt-2 border-red-400 text-red-300 hover:bg-red-500/20 bg-transparent"
+                >
+                  <RefreshCw className="h-3 w-3 mr-1" />
+                  Retry Check
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Success Alert */}
         {success && (
           <Alert className="mb-6 bg-green-500/20 border-green-500/30 text-green-300">
@@ -502,16 +534,16 @@ export default function SubmitPage() {
                     Genre *
                   </Label>
                   <Select onValueChange={handleGenreChange}>
-                    <Select.Trigger className="bg-gray-700 border-gray-600 text-white focus:border-purple-500">
-                      <Select.Value placeholder="Select your track's genre" />
-                    </Select.Trigger>
-                    <Select.Content className="bg-gray-700 border-gray-600">
+                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white focus:border-purple-500">
+                      <SelectValue placeholder="Select your track's genre" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-gray-700 border-gray-600">
                       {genres.map((genre) => (
-                        <Select.Item key={genre} value={genre} className="text-white hover:bg-gray-600">
+                        <SelectItem key={genre} value={genre} className="text-white hover:bg-gray-600">
                           {genre}
-                        </Select.Item>
+                        </SelectItem>
                       ))}
-                    </Select.Content>
+                    </SelectContent>
                   </Select>
                   {errors.genre && <p className="text-red-400 text-sm mt-1">{errors.genre}</p>}
                 </div>
@@ -607,13 +639,18 @@ export default function SubmitPage() {
               <div className="pt-6">
                 <Button
                   type="submit"
-                  disabled={submitting}
-                  className="w-full bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white font-semibold py-3 text-lg"
+                  disabled={submitting || !bucketStatus.exists}
+                  className="w-full bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white font-semibold py-3 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {submitting ? (
                     <>
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                       Submitting Your Track...
+                    </>
+                  ) : !bucketStatus.exists ? (
+                    <>
+                      <AlertCircle className="mr-2 h-5 w-5" />
+                      Storage Not Configured
                     </>
                   ) : (
                     <>
@@ -624,7 +661,9 @@ export default function SubmitPage() {
                 </Button>
 
                 <p className="text-center text-gray-400 text-sm mt-3">
-                  You'll receive expert feedback within 48-72 hours
+                  {bucketStatus.exists
+                    ? "You'll receive expert feedback within 48-72 hours"
+                    : "Please configure storage before submitting"}
                 </p>
               </div>
             </form>

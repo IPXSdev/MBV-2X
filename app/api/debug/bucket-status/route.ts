@@ -12,6 +12,7 @@ export async function GET() {
       console.error("Error listing buckets:", bucketsError)
       return NextResponse.json(
         {
+          success: false,
           error: "Failed to list buckets",
           details: bucketsError.message,
           buckets: null,
@@ -21,12 +22,15 @@ export async function GET() {
       )
     }
 
-    console.log("Available buckets:", buckets)
+    console.log(
+      "Available buckets:",
+      buckets?.map((b) => b.id),
+    )
 
     // Find the audio-submissions bucket
     const audioSubmissionsBucket = buckets?.find((bucket) => bucket.id === "audio-submissions")
 
-    // Test bucket access by trying to list files
+    // Test bucket access
     let bucketTest = null
     if (audioSubmissionsBucket) {
       try {
@@ -48,28 +52,6 @@ export async function GET() {
       }
     }
 
-    // Test upload capability (without actually uploading)
-    let uploadTest = null
-    if (audioSubmissionsBucket) {
-      try {
-        // Try to get upload URL (this tests permissions without uploading)
-        const testFileName = `test-${Date.now()}.txt`
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from("audio-submissions")
-          .createSignedUploadUrl(`test/${testFileName}`)
-
-        uploadTest = {
-          canCreateUploadUrl: !uploadError,
-          error: uploadError?.message || null,
-        }
-      } catch (error) {
-        uploadTest = {
-          canCreateUploadUrl: false,
-          error: "Failed to test upload permissions",
-        }
-      }
-    }
-
     return NextResponse.json({
       success: true,
       timestamp: new Date().toISOString(),
@@ -77,29 +59,24 @@ export async function GET() {
         id: b.id,
         name: b.name,
         public: b.public,
-        created_at: b.created_at,
-        updated_at: b.updated_at,
         file_size_limit: b.file_size_limit,
-        allowed_mime_types: b.allowed_mime_types,
       })),
       audioSubmissionsBucket: audioSubmissionsBucket
         ? {
             id: audioSubmissionsBucket.id,
             name: audioSubmissionsBucket.name,
             public: audioSubmissionsBucket.public,
-            created_at: audioSubmissionsBucket.created_at,
-            updated_at: audioSubmissionsBucket.updated_at,
             file_size_limit: audioSubmissionsBucket.file_size_limit,
             allowed_mime_types: audioSubmissionsBucket.allowed_mime_types,
           }
         : null,
       bucketTest,
-      uploadTest,
     })
   } catch (error) {
     console.error("Bucket status check failed:", error)
     return NextResponse.json(
       {
+        success: false,
         error: "Failed to check bucket status",
         details: error instanceof Error ? error.message : "Unknown error",
         buckets: null,
