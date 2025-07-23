@@ -24,6 +24,7 @@ import {
   Music,
   Sparkles,
   RefreshCw,
+  Settings,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 
@@ -102,6 +103,7 @@ export default function SubmitPage() {
     exists: boolean
     checking: boolean
     error: string | null
+    details?: any
   }>({
     exists: false,
     checking: true,
@@ -148,21 +150,33 @@ export default function SubmitPage() {
     setBucketStatus({ exists: false, checking: true, error: null })
 
     try {
+      console.log("Checking bucket status...")
       const response = await fetch("/api/debug/bucket-status")
 
+      console.log("Bucket status response:", response.status, response.statusText)
+
       if (!response.ok) {
+        const errorText = await response.text()
+        console.error("Bucket status error response:", errorText)
         throw new Error(`HTTP ${response.status}: ${response.statusText}`)
       }
 
       const data = await response.json()
+      console.log("Bucket status data:", data)
 
       if (data.success && data.audioSubmissionsBucket) {
-        setBucketStatus({ exists: true, checking: false, error: null })
+        setBucketStatus({
+          exists: true,
+          checking: false,
+          error: null,
+          details: data,
+        })
       } else {
         setBucketStatus({
           exists: false,
           checking: false,
-          error: "Audio submissions bucket not found",
+          error: data.error || "Audio submissions bucket not found",
+          details: data,
         })
       }
     } catch (error) {
@@ -433,22 +447,44 @@ export default function SubmitPage() {
           <Alert variant="destructive" className="mb-6 bg-red-500/20 border-red-500/30">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription className="text-red-300">
-              <div className="space-y-2">
-                <p>Storage bucket is not configured properly.</p>
-                <p className="text-sm">
-                  Error: {bucketStatus.error}
-                  <br />
-                  Please run the bucket creation script or contact support.
-                </p>
-                <Button
-                  onClick={checkBucketStatus}
-                  size="sm"
-                  variant="outline"
-                  className="mt-2 border-red-400 text-red-300 hover:bg-red-500/20 bg-transparent"
-                >
-                  <RefreshCw className="h-3 w-3 mr-1" />
-                  Retry Check
-                </Button>
+              <div className="space-y-3">
+                <p className="font-medium">Storage bucket is not configured properly.</p>
+                <div className="text-sm space-y-1">
+                  <p>
+                    <strong>Error:</strong> {bucketStatus.error}
+                  </p>
+                  <p>Please run the bucket creation script or contact support.</p>
+                  {bucketStatus.details && (
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-red-200 hover:text-red-100">
+                        Show technical details
+                      </summary>
+                      <pre className="mt-2 p-2 bg-red-900/20 rounded text-xs overflow-auto">
+                        {JSON.stringify(bucketStatus.details, null, 2)}
+                      </pre>
+                    </details>
+                  )}
+                </div>
+                <div className="flex space-x-2">
+                  <Button
+                    onClick={checkBucketStatus}
+                    size="sm"
+                    variant="outline"
+                    className="border-red-400 text-red-300 hover:bg-red-500/20 bg-transparent"
+                  >
+                    <RefreshCw className="h-3 w-3 mr-1" />
+                    Retry Check
+                  </Button>
+                  <Button
+                    onClick={() => window.open("/api/debug/supabase-test", "_blank")}
+                    size="sm"
+                    variant="outline"
+                    className="border-red-400 text-red-300 hover:bg-red-500/20 bg-transparent"
+                  >
+                    <Settings className="h-3 w-3 mr-1" />
+                    Debug Info
+                  </Button>
+                </div>
               </div>
             </AlertDescription>
           </Alert>
