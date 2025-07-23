@@ -446,6 +446,7 @@ export default function SubmitPage() {
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center space-x-4">
             <Button
+              type="button"
               variant="outline"
               onClick={() => router.back()}
               className="border-gray-600 text-white hover:bg-gray-800 bg-transparent"
@@ -512,6 +513,7 @@ export default function SubmitPage() {
                 </div>
                 <div className="flex space-x-2">
                   <Button
+                    type="button"
                     onClick={checkBucketStatus}
                     size="sm"
                     variant="outline"
@@ -521,6 +523,7 @@ export default function SubmitPage() {
                     Retry Check
                   </Button>
                   <Button
+                    type="button"
                     onClick={() => window.open("/api/debug/simple-bucket-check", "_blank")}
                     size="sm"
                     variant="outline"
@@ -708,6 +711,7 @@ export default function SubmitPage() {
                       artist={formData.artistName || "Unknown Artist"}
                       duration={audioDuration || undefined}
                       showWaveform={true}
+                      albumArt="/images/default-holographic-album-cover.png"
                     />
                   </div>
                 )}

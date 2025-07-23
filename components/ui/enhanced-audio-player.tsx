@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useRef, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
@@ -16,6 +18,7 @@ import {
   Share2,
   Download,
 } from "lucide-react"
+import Image from "next/image"
 
 interface EnhancedAudioPlayerProps {
   src: string
@@ -50,6 +53,9 @@ export function EnhancedAudioPlayer({
   const [isMuted, setIsMuted] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [waveformData, setWaveformData] = useState<number[]>([])
+
+  // Use the holographic album cover as default
+  const defaultAlbumArt = "/images/default-holographic-album-cover.png"
 
   // Initialize audio context and analyser
   const initializeAudioContext = useCallback(async () => {
@@ -124,8 +130,11 @@ export function EnhancedAudioPlayer({
     animate()
   }, [isPlaying])
 
-  // Handle play/pause
-  const togglePlayPause = async () => {
+  // Handle play/pause with event prevention
+  const togglePlayPause = async (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+
     if (!audioRef.current) return
 
     try {
@@ -176,7 +185,10 @@ export function EnhancedAudioPlayer({
   }
 
   // Toggle mute
-  const toggleMute = () => {
+  const toggleMute = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+
     if (audioRef.current) {
       if (isMuted) {
         audioRef.current.volume = volume
@@ -237,8 +249,19 @@ export function EnhancedAudioPlayer({
           {/* Album Art */}
           <div className="flex-shrink-0">
             <div className="w-12 h-12 rounded-lg overflow-hidden bg-gradient-to-br from-purple-500 via-blue-500 to-cyan-500 p-0.5">
-              <div className="w-full h-full rounded-lg bg-gray-800 flex items-center justify-center">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-yellow-400 via-orange-500 to-red-500 animate-spin-slow"></div>
+              <div className="w-full h-full rounded-lg bg-gray-800 flex items-center justify-center relative overflow-hidden">
+                <Image
+                  src={albumArt || defaultAlbumArt}
+                  alt="Album Cover"
+                  width={48}
+                  height={48}
+                  className="w-full h-full object-cover rounded-lg"
+                  onError={(e) => {
+                    // Fallback to default if image fails to load
+                    const target = e.target as HTMLImageElement
+                    target.src = defaultAlbumArt
+                  }}
+                />
               </div>
             </div>
           </div>
@@ -251,6 +274,7 @@ export function EnhancedAudioPlayer({
 
           {/* Play Button */}
           <Button
+            type="button"
             onClick={togglePlayPause}
             disabled={isLoading}
             className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white rounded-full w-10 h-10 p-0"
@@ -277,19 +301,18 @@ export function EnhancedAudioPlayer({
         <div className="flex-shrink-0">
           <div className="w-20 h-20 lg:w-24 lg:h-24 rounded-xl overflow-hidden bg-gradient-to-br from-purple-500 via-blue-500 to-cyan-500 p-1 shadow-lg">
             <div className="w-full h-full rounded-lg bg-gray-800 flex items-center justify-center relative overflow-hidden">
-              {/* Holographic CD/Record */}
-              <div className="w-16 h-16 lg:w-20 lg:h-20 rounded-full relative">
-                {/* Outer ring - holographic effect */}
-                <div className="absolute inset-0 rounded-full bg-gradient-conic from-purple-500 via-blue-500 via-cyan-500 via-green-500 via-yellow-500 via-red-500 to-purple-500 animate-spin-slow"></div>
-                {/* Inner disc */}
-                <div className="absolute inset-2 rounded-full bg-gradient-radial from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center">
-                  {/* Center hole */}
-                  <div className="w-3 h-3 rounded-full bg-gray-900 border border-gray-600"></div>
-                  {/* Reflection lines */}
-                  <div className="absolute inset-0 rounded-full bg-gradient-to-r from-transparent via-white/10 to-transparent transform rotate-45"></div>
-                  <div className="absolute inset-0 rounded-full bg-gradient-to-r from-transparent via-white/5 to-transparent transform -rotate-45"></div>
-                </div>
-              </div>
+              <Image
+                src={albumArt || defaultAlbumArt}
+                alt="Album Cover"
+                width={96}
+                height={96}
+                className="w-full h-full object-cover rounded-lg"
+                onError={(e) => {
+                  // Fallback to default if image fails to load
+                  const target = e.target as HTMLImageElement
+                  target.src = defaultAlbumArt
+                }}
+              />
             </div>
           </div>
         </div>
@@ -333,13 +356,32 @@ export function EnhancedAudioPlayer({
           {/* Controls */}
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
-              <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white hover:bg-gray-700">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-gray-400 hover:text-white hover:bg-gray-700"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                }}
+              >
                 <Shuffle className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white hover:bg-gray-700">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-gray-400 hover:text-white hover:bg-gray-700"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                }}
+              >
                 <SkipBack className="h-4 w-4" />
               </Button>
               <Button
+                type="button"
                 onClick={togglePlayPause}
                 disabled={isLoading}
                 className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white rounded-full w-12 h-12 p-0 shadow-lg"
@@ -352,26 +394,72 @@ export function EnhancedAudioPlayer({
                   <Play className="h-5 w-5 ml-0.5" />
                 )}
               </Button>
-              <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white hover:bg-gray-700">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-gray-400 hover:text-white hover:bg-gray-700"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                }}
+              >
                 <SkipForward className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white hover:bg-gray-700">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-gray-400 hover:text-white hover:bg-gray-700"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                }}
+              >
                 <Repeat className="h-4 w-4" />
               </Button>
             </div>
 
             <div className="flex items-center space-x-2">
-              <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white hover:bg-gray-700">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-gray-400 hover:text-white hover:bg-gray-700"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                }}
+              >
                 <Heart className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white hover:bg-gray-700">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-gray-400 hover:text-white hover:bg-gray-700"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                }}
+              >
                 <Share2 className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white hover:bg-gray-700">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-gray-400 hover:text-white hover:bg-gray-700"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                }}
+              >
                 <Download className="h-4 w-4" />
               </Button>
               <div className="flex items-center space-x-2 ml-4">
                 <Button
+                  type="button"
                   onClick={toggleMute}
                   variant="ghost"
                   size="sm"

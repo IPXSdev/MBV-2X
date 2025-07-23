@@ -1,12 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/supabase/auth"
-import { createClient } from "@/lib/supabase/server"
+import { createClient } from "@supabase/supabase-js"
 
 export const dynamic = "force-dynamic"
 
 export async function GET(request: NextRequest) {
   try {
-    // Use the custom auth system
+    // Use custom auth system
     const user = await getCurrentUser()
 
     if (!user) {
@@ -14,34 +14,38 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if user is admin or master dev
-    if (!["admin", "master_dev"].includes(user.role)) {
+    if (user.role !== "admin" && user.role !== "master_dev") {
       return NextResponse.json({ error: "Forbidden - Admin access required" }, { status: 403 })
     }
 
     // Use service client for database operations
     const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
+    // Get query parameters
     const { searchParams } = new URL(request.url)
-    const page = Number.parseInt(searchParams.get("page") || "1")
-    const limit = Number.parseInt(searchParams.get("limit") || "20")
-    const offset = (page - 1) * limit
+    const limit = Number.parseInt(searchParams.get("limit") || "50")
+    const offset = Number.parseInt(searchParams.get("offset") || "0")
+    const search = searchParams.get("search")
+    const tier = searchParams.get("tier")
 
-    // Get users with submission counts
-    const { data: users, error: usersError } = await supabase
+    // Build query
+    let query = supabase
       .from("users")
-      .select(`
-        id,
-        email,
-        name,
-        role,
-        tier,
-        submission_credits,
-        created_at,
-        updated_at,
-        is_verified
-      `)
+      .select("*")
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1)
+
+    // Apply search filter if provided
+    if (search) {
+      query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%`)
+    }
+
+    // Apply tier filter if provided
+    if (tier && tier !== "all") {
+      query = query.eq("tier", tier)
+    }
+
+    const { data: users, error: usersError } = await query
 
     if (usersError) {
       console.error("Error fetching users:", usersError)
@@ -54,43 +58,35 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get submission counts for each user
-    const userIds = users?.map((u) => u.id) || []
-    const { data: submissionCounts } = await supabase.from("submissions").select("user_id").in("user_id", userIds)
-
-    // Count submissions per user
-    const submissionCountMap =
-      submissionCounts?.reduce(
-        (acc, sub) => {
-          acc[sub.user_id] = (acc[sub.user_id] || 0) + 1
-          return acc
-        },
-        {} as Record<string, number>,
-      ) || {}
-
-    // Add submission counts to users
-    const usersWithCounts =
-      users?.map((user) => ({
-        ...user,
-        total_submissions: submissionCountMap[user.id] || 0,
-      })) || []
-
     // Get total count for pagination
-    const { count } = await supabase.from("users").select("*", { count: "exact", head: true })
+    let countQuery = supabase.from("users").select("*", { count: "exact", head: true })
 
-    const totalPages = Math.ceil((count || 0) / limit)
+    if (search) {
+      countQuery = countQuery.or(`name.ilike.%${search}%,email.ilike.%${search}%`)
+    }
+
+    if (tier && tier !== "all") {
+      countQuery = countQuery.eq("tier", tier)
+    }
+
+    const { count, error: countError } = await countQuery
+
+    if (countError) {
+      console.error("Error getting users count:", countError)
+    }
 
     return NextResponse.json({
-      users: usersWithCounts,
+      success: true,
+      users: users || [],
       pagination: {
         total: count || 0,
-        page,
         limit,
-        totalPages,
+        offset,
+        hasMore: (count || 0) > offset + limit,
       },
     })
   } catch (error) {
-    console.error("Admin users error:", error)
+    console.error("Error in admin users route:", error)
     return NextResponse.json(
       {
         error: "Internal server error",

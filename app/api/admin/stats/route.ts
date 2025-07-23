@@ -1,9 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/supabase/auth"
+import { createClient } from "@supabase/supabase-js"
+
+export const dynamic = "force-dynamic"
 
 export async function GET(request: NextRequest) {
   try {
-    // Use the custom auth system
+    // Use custom auth system
     const user = await getCurrentUser()
 
     if (!user) {
@@ -11,68 +14,75 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if user is admin or master dev
-    if (!["admin", "master_dev"].includes(user.role)) {
+    if (user.role !== "admin" && user.role !== "master_dev") {
       return NextResponse.json({ error: "Forbidden - Admin access required" }, { status: 403 })
     }
 
     // Use service client for database operations
-    const { createClient } = await import("@supabase/supabase-js")
     const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
-    // Get submission stats
-    const { data: submissions, error: submissionsError } = await supabase
-      .from("submissions")
-      .select("status, created_at")
+    // Get various statistics
+    const [
+      { count: totalUsers },
+      { count: totalSubmissions },
+      { count: pendingSubmissions },
+      { count: approvedSubmissions },
+      { count: rejectedSubmissions },
+    ] = await Promise.all([
+      supabase.from("users").select("*", { count: "exact", head: true }),
+      supabase.from("submissions").select("*", { count: "exact", head: true }),
+      supabase.from("submissions").select("*", { count: "exact", head: true }).eq("status", "pending"),
+      supabase.from("submissions").select("*", { count: "exact", head: true }).eq("status", "approved"),
+      supabase.from("submissions").select("*", { count: "exact", head: true }).eq("status", "rejected"),
+    ])
 
-    if (submissionsError) {
-      console.error("Error fetching submission stats:", submissionsError)
-    }
+    // Get user tier distribution
+    const { data: tierStats } = await supabase
+      .from("users")
+      .select("tier")
+      .then(({ data }) => {
+        const stats = { creator: 0, indie: 0, pro: 0 }
+        data?.forEach((user) => {
+          if (user.tier in stats) {
+            stats[user.tier as keyof typeof stats]++
+          }
+        })
+        return { data: stats }
+      })
 
-    // Get user stats
-    const { data: users, error: usersError } = await supabase.from("users").select("role, tier, created_at")
-
-    if (usersError) {
-      console.error("Error fetching user stats:", usersError)
-    }
-
-    // Calculate submission stats
-    const submissionStats = {
-      total: submissions?.length || 0,
-      pending: submissions?.filter((s) => s.status === "pending").length || 0,
-      approved: submissions?.filter((s) => s.status === "approved").length || 0,
-      rejected: submissions?.filter((s) => s.status === "rejected").length || 0,
-      in_review: submissions?.filter((s) => s.status === "in_review").length || 0,
-    }
-
-    // Calculate user stats
-    const userStats = {
-      total: users?.length || 0,
-      creator: users?.filter((u) => u.tier === "creator").length || 0,
-      indie: users?.filter((u) => u.tier === "indie").length || 0,
-      pro: users?.filter((u) => u.tier === "pro").length || 0,
-      admins: users?.filter((u) => ["admin", "master_dev"].includes(u.role)).length || 0,
-    }
-
-    // Calculate recent activity (last 30 days)
+    // Get recent activity (last 30 days)
     const thirtyDaysAgo = new Date()
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
 
-    const recentSubmissions = submissions?.filter((s) => new Date(s.created_at) > thirtyDaysAgo).length || 0
+    const { count: recentSubmissions } = await supabase
+      .from("submissions")
+      .select("*", { count: "exact", head: true })
+      .gte("created_at", thirtyDaysAgo.toISOString())
 
-    const recentUsers = users?.filter((u) => new Date(u.created_at) > thirtyDaysAgo).length || 0
-
-    const activityStats = {
-      recentSubmissions,
-      recentUsers,
-    }
+    const { count: recentUsers } = await supabase
+      .from("users")
+      .select("*", { count: "exact", head: true })
+      .gte("created_at", thirtyDaysAgo.toISOString())
 
     return NextResponse.json({
-      submissions: submissionStats,
-      users: userStats,
-      activity: activityStats,
+      success: true,
+      stats: {
+        users: {
+          total: totalUsers || 0,
+          recent: recentUsers || 0,
+          byTier: tierStats || { creator: 0, indie: 0, pro: 0 },
+        },
+        submissions: {
+          total: totalSubmissions || 0,
+          pending: pendingSubmissions || 0,
+          approved: approvedSubmissions || 0,
+          rejected: rejectedSubmissions || 0,
+          recent: recentSubmissions || 0,
+        },
+      },
     })
   } catch (error) {
-    console.error("Admin stats error:", error)
+    console.error("Error in admin stats route:", error)
     return NextResponse.json(
       {
         error: "Internal server error",
