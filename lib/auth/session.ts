@@ -1,68 +1,67 @@
 import { cookies } from "next/headers"
-import { SESSION_CONFIG } from "./config"
-import { getUserBySessionToken, deleteUserSession } from "./database"
-import type { User } from "./types"
+import { createClient } from "@/lib/supabase/server"
 
-export async function getCurrentUser(): Promise<User | null> {
+export async function getCurrentUser() {
   try {
     const cookieStore = await cookies()
-    const sessionToken = cookieStore.get(SESSION_CONFIG.cookieName)?.value
+    const sessionToken = cookieStore.get("session_token")?.value
 
     if (!sessionToken) {
       return null
     }
 
-    return await getUserBySessionToken(sessionToken)
+    const supabase = await createClient()
+
+    // Get session and user data
+    const { data: session, error: sessionError } = await supabase
+      .from("user_sessions")
+      .select(`
+        user_id,
+        expires_at,
+        users (
+          id,
+          email,
+          name,
+          role,
+          tier,
+          submission_credits,
+          legal_waiver_accepted,
+          compensation_type,
+          created_at,
+          updated_at
+        )
+      `)
+      .eq("session_token", sessionToken)
+      .single()
+
+    if (sessionError || !session || !session.users) {
+      return null
+    }
+
+    // Check if session is expired
+    if (new Date(session.expires_at) < new Date()) {
+      // Clean up expired session
+      await supabase.from("user_sessions").delete().eq("session_token", sessionToken)
+
+      return null
+    }
+
+    const user = Array.isArray(session.users) ? session.users[0] : session.users
+
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      tier: user.tier,
+      submission_credits: user.submission_credits,
+      legal_waiver_accepted: user.legal_waiver_accepted,
+      compensation_type: user.compensation_type,
+      created_at: user.created_at,
+      updated_at: user.updated_at,
+    }
   } catch (error) {
     console.error("❌ Error getting current user:", error)
     return null
   }
-}
-
-export async function setSessionCookie(sessionToken: string): Promise<void> {
-  const cookieStore = await cookies()
-  const expiresAt = new Date(Date.now() + SESSION_CONFIG.expiryDays * 24 * 60 * 60 * 1000)
-
-  cookieStore.set(SESSION_CONFIG.cookieName, sessionToken, {
-    httpOnly: SESSION_CONFIG.httpOnly,
-    secure: SESSION_CONFIG.secure,
-    sameSite: SESSION_CONFIG.sameSite,
-    expires: expiresAt,
-    path: "/",
-  })
-}
-
-export async function clearSessionCookie(): Promise<void> {
-  const cookieStore = await cookies()
-  const sessionToken = cookieStore.get(SESSION_CONFIG.cookieName)?.value
-
-  if (sessionToken) {
-    await deleteUserSession(sessionToken)
-  }
-
-  cookieStore.delete(SESSION_CONFIG.cookieName)
-}
-
-export async function requireAuth(): Promise<User> {
-  const user = await getCurrentUser()
-  if (!user) {
-    throw new Error("Authentication required")
-  }
-  return user
-}
-
-export async function requireAdmin(): Promise<User> {
-  const user = await requireAuth()
-  if (!["admin", "master_dev"].includes(user.role)) {
-    throw new Error("Admin access required")
-  }
-  return user
-}
-
-export async function requireMasterDev(): Promise<User> {
-  const user = await requireAuth()
-  if (user.role !== "master_dev") {
-    throw new Error("Master developer access required")
-  }
-  return user
 }

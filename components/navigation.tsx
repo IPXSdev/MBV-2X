@@ -21,6 +21,7 @@ export function Navigation() {
     { href: "/", label: "Home" },
     { href: "/about", label: "About" },
     { href: "/podcast", label: "Podcast" },
+    { href: "/submissions", label: "Submissions" },
     { href: "/placements", label: "Placements" },
     { href: "/pricing", label: "Pricing" },
     { href: "/contact", label: "Contact" },

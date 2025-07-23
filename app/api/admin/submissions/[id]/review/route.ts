@@ -1,47 +1,81 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { requireAdmin } from "@/lib/supabase/auth"
+import { getCurrentUser } from "@/lib/supabase/auth"
 import { createClient } from "@/lib/supabase/server"
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const admin = await requireAdmin()
+    const user = await getCurrentUser()
+
+    if (!user || !["admin", "master_dev"].includes(user.role)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const submissionId = params.id
+    if (!submissionId) {
+      return NextResponse.json({ error: "Submission ID is required" }, { status: 400 })
+    }
+
+    const body = await request.json()
+    const { rating, feedback, status, tags } = body
+
+    if (!rating || !status) {
+      return NextResponse.json({ error: "Rating and status are required" }, { status: 400 })
+    }
+
     const supabase = await createClient()
 
-    const { status, feedback, rating, tags } = await request.json()
-    const submissionId = params.id
+    // First, check if the submission exists
+    const { data: submission, error: fetchError } = await supabase
+      .from("submissions")
+      .select("id, user_id, title, status")
+      .eq("id", submissionId)
+      .single()
 
-    // Update submission status
-    const { error: submissionError } = await supabase
+    if (fetchError || !submission) {
+      console.error("Error fetching submission:", fetchError)
+      return NextResponse.json({ error: "Submission not found" }, { status: 404 })
+    }
+
+    // Update the submission with review data
+    const { error: updateError } = await supabase
       .from("submissions")
       .update({
-        status,
+        admin_rating: rating,
+        admin_feedback: feedback,
+        status: status,
+        mood_tags: tags || submission.mood_tags,
         updated_at: new Date().toISOString(),
+        reviewed_by: user.id,
+        reviewed_at: new Date().toISOString(),
       })
       .eq("id", submissionId)
 
-    if (submissionError) {
-      console.error("Error updating submission:", submissionError)
+    if (updateError) {
+      console.error("Error updating submission:", updateError)
       return NextResponse.json({ error: "Failed to update submission" }, { status: 500 })
     }
 
-    // Create review record
-    const { error: reviewError } = await supabase.from("reviews").insert({
-      submission_id: submissionId,
-      reviewer_id: admin.id,
-      feedback,
-      rating: rating || null,
-      tags: tags || [],
-      created_at: new Date().toISOString(),
+    // Log activity for the user
+    await supabase.from("activity").insert({
+      user_id: submission.user_id,
+      type: "review",
+      title: `Track review: ${submission.title}`,
+      description: `Your track "${submission.title}" has been reviewed`,
+      timestamp: new Date().toISOString(),
+      status: status,
+      metadata: {
+        submission_id: submissionId,
+        rating: rating,
+        feedback: feedback,
+      },
     })
 
-    if (reviewError) {
-      console.error("Error creating review:", reviewError)
-      return NextResponse.json({ error: "Failed to create review" }, { status: 500 })
-    }
-
-    return NextResponse.json({ success: true })
+    return NextResponse.json({
+      success: true,
+      message: "Submission reviewed successfully",
+    })
   } catch (error) {
-    console.error("Review submission API error:", error)
+    console.error("Error in review submission route:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

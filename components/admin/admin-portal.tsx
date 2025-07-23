@@ -1,73 +1,71 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { useAuth } from "@/components/auth/auth-provider"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Separator } from "@/components/ui/separator"
 import {
   Users,
-  Music,
-  TrendingUp,
-  Clock,
-  CheckCircle,
-  AlertCircle,
-  Search,
-  Play,
-  Star,
-  MessageSquare,
+  FileText,
+  BarChart3,
   Settings,
+  Search,
+  RefreshCw,
+  Trash2,
+  Edit,
   Shield,
+  Crown,
+  Play,
+  Download,
   Upload,
   Youtube,
-  Edit,
+  Star,
+  Clock,
+  Music,
   Eye,
-  RefreshCw,
-  Home,
-  Trash2,
-  Download,
-  BarChart3,
-  Activity,
-  Database,
-  Server,
-  Zap,
-  Crown,
-  UserCheck,
-  UserX,
-  Mail,
-  Calendar,
-  FileText,
-  Headphones,
-  Pause,
-  CreditCard,
+  Plus,
+  Minus,
 } from "lucide-react"
-import { useRouter } from "next/navigation"
-import { formatRelativeTime, formatDuration } from "@/lib/utils"
 
-interface User {
+interface AdminUser {
   id: string
   email: string
   name: string
-  tier: string
   role: string
+  tier: string
   submission_credits: number
-  is_verified: boolean
   created_at: string
-  updated_at: string
+  last_login?: string
+  total_submissions?: number
 }
 
 interface Submission {
   id: string
-  status: string
-  created_at: string
-  updated_at: string
-  users: { name: string; email: string }
-  tracks: { title: string; artist: string; duration: number; file_url: string }
+  title: string
+  artist_name: string
+  genre?: string
+  status: "pending" | "in_review" | "approved" | "rejected"
+  admin_rating?: number
+  admin_feedback?: string
+  submitted_at: string
+  updated_at?: string
+  file_url?: string
+  file_size?: number
+  mood_tags?: string[]
+  description?: string
+  users?: {
+    id: string
+    name: string
+    email: string
+    tier: string
+  }
 }
 
 interface Stats {
@@ -91,516 +89,262 @@ interface Stats {
   }
 }
 
-interface Media {
+interface MediaItem {
   id: string
   title: string
-  description: string
-  media_type: string
-  youtube_url?: string
-  file_url?: string
-  thumbnail_url?: string
-  is_public: boolean
+  description?: string
+  url: string
+  type: "youtube" | "upload"
+  thumbnail?: string
   created_at: string
 }
 
-export function AdminPortal({ user }: { user: any }) {
-  const [stats, setStats] = useState<Stats | null>(null)
+export function AdminPortal() {
+  const { user } = useAuth()
+  const [users, setUsers] = useState<AdminUser[]>([])
   const [submissions, setSubmissions] = useState<Submission[]>([])
-  const [users, setUsers] = useState<User[]>([])
-  const [media, setMedia] = useState<Media[]>([])
+  const [media, setMedia] = useState<MediaItem[]>([])
+  const [stats, setStats] = useState<Stats | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState("")
-  const [success, setSuccess] = useState("")
-  const router = useRouter()
+  const [searchTerm, setSearchTerm] = useState("")
+  const [activeTab, setActiveTab] = useState("submissions")
 
-  // Filters and search
-  const [submissionFilter, setSubmissionFilter] = useState("all")
-  const [submissionSearch, setSubmissionSearch] = useState("")
-  const [userFilter, setUserFilter] = useState("all")
-  const [userSearch, setUserSearch] = useState("")
-  const [currentPage, setCurrentPage] = useState(1)
-
-  // Review modal state
-  const [reviewingSubmission, setReviewingSubmission] = useState<Submission | null>(null)
-  const [reviewFeedback, setReviewFeedback] = useState("")
-  const [reviewRating, setReviewRating] = useState(0)
-  const [reviewStatus, setReviewStatus] = useState("")
-  const [reviewTags, setReviewTags] = useState<string[]>([])
-
-  // Media management
+  // Media management states
   const [youtubeUrl, setYoutubeUrl] = useState("")
-  const [mediaTitle, setMediaTitle] = useState("")
-  const [mediaDescription, setMediaDescription] = useState("")
+  const [videoTitle, setVideoTitle] = useState("")
+  const [videoDescription, setVideoDescription] = useState("")
   const [uploadingMedia, setUploadingMedia] = useState(false)
 
-  // User editing
-  const [editingUser, setEditingUser] = useState<User | null>(null)
-  const [editUserTier, setEditUserTier] = useState("")
-  const [editUserRole, setEditUserRole] = useState("")
-  const [editUserCredits, setEditUserCredits] = useState(0)
-  const [editUserVerified, setEditUserVerified] = useState(false)
+  // User management states
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([])
+  const [userFilter, setUserFilter] = useState("all")
+  const [tierFilter, setTierFilter] = useState("all")
 
-  // Audio player state
-  const [currentlyPlaying, setCurrentlyPlaying] = useState<string | null>(null)
-  const [isPlaying, setIsPlaying] = useState(false)
-
-  // Bulk actions and selection
-  const [selectedSubmissions, setSelectedSubmissions] = useState<string[]>([])
-  const [bulkAction, setBulkAction] = useState("")
+  // Submission management states
+  const [submissionFilter, setSubmissionFilter] = useState("all")
+  const [statusFilter, setStatusFilter] = useState("all")
 
   useEffect(() => {
-    loadData()
-  }, [submissionFilter, submissionSearch, userFilter, userSearch, currentPage])
+    fetchData()
+  }, [])
 
-  const loadData = async () => {
+  const fetchData = async () => {
+    setLoading(true)
     try {
-      setLoading(true)
-      setError("")
+      const [usersRes, submissionsRes, statsRes, mediaRes] = await Promise.all([
+        fetch("/api/admin/users"),
+        fetch("/api/admin/submissions"),
+        fetch("/api/admin/stats"),
+        fetch("/api/admin/media"),
+      ])
 
-      // Load stats
-      const statsRes = await fetch("/api/admin/stats")
-      if (statsRes.ok) {
-        const statsData = await statsRes.json()
-        setStats(statsData)
-      } else {
-        console.error("Failed to load stats:", await statsRes.text())
-      }
-
-      // Load submissions
-      const submissionsRes = await fetch(
-        `/api/admin/submissions?status=${submissionFilter}&search=${encodeURIComponent(submissionSearch)}&page=${currentPage}&limit=10`,
-      )
-      if (submissionsRes.ok) {
-        const submissionsData = await submissionsRes.json()
-        setSubmissions(submissionsData.submissions || [])
-      } else {
-        console.error("Failed to load submissions:", await submissionsRes.text())
-      }
-
-      // Load users
-      const usersRes = await fetch(
-        `/api/admin/users?role=${userFilter}&search=${encodeURIComponent(userSearch)}&page=${currentPage}&limit=10`,
-      )
       if (usersRes.ok) {
         const usersData = await usersRes.json()
         setUsers(usersData.users || [])
-      } else {
-        console.error("Failed to load users:", await usersRes.text())
       }
 
-      // Load media
-      const mediaRes = await fetch("/api/admin/media")
+      if (submissionsRes.ok) {
+        const submissionsData = await submissionsRes.json()
+        setSubmissions(submissionsData.submissions || [])
+      }
+
+      if (statsRes.ok) {
+        const statsData = await statsRes.json()
+        setStats(statsData)
+      }
+
       if (mediaRes.ok) {
         const mediaData = await mediaRes.json()
         setMedia(mediaData.media || [])
-      } else {
-        console.error("Failed to load media:", await mediaRes.text())
       }
-    } catch (err) {
-      console.error("Error loading admin data:", err)
-      setError("Failed to load admin data")
+    } catch (error) {
+      console.error("Error fetching admin data:", error)
     } finally {
       setLoading(false)
     }
   }
 
-  const handleReviewSubmission = async () => {
-    if (!reviewingSubmission || !reviewStatus) return
+  const handleSyncYouTubeVideo = async () => {
+    if (!youtubeUrl.trim()) return
 
+    setUploadingMedia(true)
     try {
-      setLoading(true)
-      const response = await fetch(`/api/admin/submissions/${reviewingSubmission.id}/review`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status: reviewStatus,
-          feedback: reviewFeedback,
-          rating: reviewRating || null,
-          tags: reviewTags,
-        }),
-      })
-
-      if (response.ok) {
-        setSuccess("Review submitted successfully")
-        setReviewingSubmission(null)
-        setReviewFeedback("")
-        setReviewRating(0)
-        setReviewStatus("")
-        setReviewTags([])
-        loadData()
-      } else {
-        const errorData = await response.json()
-        setError(errorData.error || "Failed to submit review")
-      }
-    } catch (err) {
-      setError("Error submitting review")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleDeleteSubmission = async (submissionId: string) => {
-    if (!confirm("Are you sure you want to delete this submission? This action cannot be undone.")) {
-      return
-    }
-
-    try {
-      setLoading(true)
-      const response = await fetch(`/api/admin/submissions/${submissionId}`, {
-        method: "DELETE",
-      })
-
-      if (response.ok) {
-        setSuccess("Submission deleted successfully")
-        loadData()
-      } else {
-        const errorData = await response.json()
-        setError(errorData.error || "Failed to delete submission")
-      }
-    } catch (err) {
-      setError("Error deleting submission")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleBulkAction = async (action: string, submissionIds: string[]) => {
-    if (submissionIds.length === 0) {
-      setError("Please select submissions to perform bulk action")
-      return
-    }
-
-    if (!confirm(`Are you sure you want to ${action} ${submissionIds.length} submission(s)?`)) {
-      return
-    }
-
-    try {
-      setLoading(true)
-      const response = await fetch("/api/admin/submissions/bulk", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action,
-          submissionIds,
-        }),
-      })
-
-      if (response.ok) {
-        setSuccess(`Bulk ${action} completed successfully`)
-        setSelectedSubmissions([])
-        loadData()
-      } else {
-        const errorData = await response.json()
-        setError(errorData.error || `Failed to perform bulk ${action}`)
-      }
-    } catch (err) {
-      setError(`Error performing bulk ${action}`)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleExportSubmissions = async () => {
-    try {
-      setLoading(true)
-      const response = await fetch("/api/admin/submissions/export", {
-        method: "GET",
-      })
-
-      if (response.ok) {
-        const blob = await response.blob()
-        const url = window.URL.createObjectURL(blob)
-        const a = document.createElement("a")
-        a.href = url
-        a.download = `submissions-export-${new Date().toISOString().split("T")[0]}.csv`
-        document.body.appendChild(a)
-        a.click()
-        window.URL.revokeObjectURL(url)
-        document.body.removeChild(a)
-        setSuccess("Submissions exported successfully")
-      } else {
-        const errorData = await response.json()
-        setError(errorData.error || "Failed to export submissions")
-      }
-    } catch (err) {
-      setError("Error exporting submissions")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleSyncYouTube = async () => {
-    if (!youtubeUrl || !mediaTitle) {
-      setError("YouTube URL and title are required")
-      return
-    }
-
-    try {
-      setUploadingMedia(true)
       const response = await fetch("/api/admin/media/sync", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
-          youtube_url: youtubeUrl,
-          title: mediaTitle,
-          description: mediaDescription,
+          url: youtubeUrl,
+          title: videoTitle,
+          description: videoDescription,
         }),
       })
 
       if (response.ok) {
-        setSuccess("YouTube video synced successfully")
         setYoutubeUrl("")
-        setMediaTitle("")
-        setMediaDescription("")
-        loadData()
-      } else {
-        const errorData = await response.json()
-        setError(errorData.error || "Failed to sync YouTube video")
+        setVideoTitle("")
+        setVideoDescription("")
+        fetchData() // Refresh data
       }
-    } catch (err) {
-      setError("Error syncing YouTube video")
+    } catch (error) {
+      console.error("Error syncing YouTube video:", error)
     } finally {
       setUploadingMedia(false)
     }
   }
 
-  const handleEditUser = async () => {
-    if (!editingUser) return
+  const handleBulkUserAction = async (action: string) => {
+    if (selectedUsers.length === 0) return
 
     try {
-      setLoading(true)
-      const response = await fetch(`/api/admin/users/${editingUser.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+      const response = await fetch("/api/admin/users/bulk", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
-          tier: editUserTier,
-          role: editUserRole,
-          submission_credits: editUserCredits,
-          is_verified: editUserVerified,
+          action,
+          userIds: selectedUsers,
         }),
       })
 
       if (response.ok) {
-        setSuccess("User updated successfully")
-        setEditingUser(null)
-        loadData()
-      } else {
-        const errorData = await response.json()
-        setError(errorData.error || "Failed to update user")
+        setSelectedUsers([])
+        fetchData()
       }
-    } catch (err) {
-      setError("Error updating user")
-    } finally {
-      setLoading(false)
+    } catch (error) {
+      console.error("Error performing bulk action:", error)
     }
   }
 
-  const handleDeleteUser = async (userId: string) => {
-    if (!confirm("Are you sure you want to delete this user? This action cannot be undone.")) {
-      return
-    }
+  const filteredUsers = users.filter((u) => {
+    const matchesSearch =
+      u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      u.name.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesRole = userFilter === "all" || u.role === userFilter
+    const matchesTier = tierFilter === "all" || u.tier === tierFilter
+    return matchesSearch && matchesRole && matchesTier
+  })
 
-    try {
-      setLoading(true)
-      const response = await fetch(`/api/admin/users/${userId}`, {
-        method: "DELETE",
-      })
+  const filteredSubmissions = submissions.filter((s) => {
+    const matchesSearch =
+      s.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      s.artist_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (s.users?.email || "").toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesStatus = statusFilter === "all" || s.status === statusFilter
+    return matchesSearch && matchesStatus
+  })
 
-      if (response.ok) {
-        setSuccess("User deleted successfully")
-        loadData()
-      } else {
-        const errorData = await response.json()
-        setError(errorData.error || "Failed to delete user")
-      }
-    } catch (err) {
-      setError("Error deleting user")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handlePlayAudio = (url: string, submissionId: string) => {
-    if (currentlyPlaying === submissionId && isPlaying) {
-      setIsPlaying(false)
-      setCurrentlyPlaying(null)
-    } else {
-      setCurrentlyPlaying(submissionId)
-      setIsPlaying(true)
-      // In a real implementation, you would integrate with an audio player
-    }
-  }
-
-  const getStatusBadge = (status: string) => {
-    const variants = {
-      pending: "bg-yellow-500",
-      in_review: "bg-blue-500",
-      approved: "bg-green-500",
-      rejected: "bg-red-500",
-    }
+  if (loading) {
     return (
-      <Badge className={`${variants[status as keyof typeof variants]} text-white`}>{status.replace("_", " ")}</Badge>
-    )
-  }
-
-  const getTierBadge = (tier: string) => {
-    const variants = {
-      creator: "bg-gray-500",
-      indie: "bg-blue-500",
-      pro: "bg-gradient-to-r from-purple-500 to-pink-500",
-    }
-    return <Badge className={`${variants[tier as keyof typeof variants]} text-white`}>{tier.toUpperCase()}</Badge>
-  }
-
-  const getRoleBadge = (role: string) => {
-    const variants = {
-      user: "bg-gray-500",
-      admin: "bg-orange-500",
-      master_dev: "bg-red-500",
-    }
-    return (
-      <Badge className={`${variants[role as keyof typeof variants]} text-white`}>
-        {role === "master_dev" ? "MASTER DEV" : role.toUpperCase()}
-      </Badge>
-    )
-  }
-
-  const clearMessages = () => {
-    setError("")
-    setSuccess("")
-  }
-
-  if (loading && !stats) {
-    return (
-      <div className="min-h-screen bg-gray-900 text-white p-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex items-center justify-center py-12">
-            <RefreshCw className="h-8 w-8 animate-spin text-blue-500 mr-3" />
-            <span className="text-xl">Loading Admin Portal...</span>
-          </div>
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <RefreshCw className="h-8 w-8 animate-spin text-blue-500 mx-auto mb-4" />
+          <p className="text-gray-300">Loading admin portal...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-6">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-gray-900 text-white">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold mb-2">Admin Portal</h1>
-              <p className="text-gray-400">
-                Welcome back, {user.name} • {user.role === "master_dev" ? "Master Developer" : "Administrator"}
-              </p>
-            </div>
-            <div className="flex items-center space-x-4">
-              <Button
-                onClick={() => router.push("/dashboard")}
-                variant="outline"
-                className="border-gray-600 text-white"
-              >
-                <Home className="h-4 w-4 mr-2" />
-                Dashboard
-              </Button>
-              <Button onClick={loadData} className="bg-blue-600 hover:bg-blue-700">
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Refresh Data
-              </Button>
-            </div>
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-white flex items-center">
+              {user?.role === "master_dev" ? (
+                <Crown className="h-8 w-8 mr-3 text-yellow-500" />
+              ) : (
+                <Shield className="h-8 w-8 mr-3 text-blue-500" />
+              )}
+              Admin Portal
+            </h1>
+            <p className="text-gray-400 mt-2">
+              Welcome back, {user?.name} • {user?.role?.replace("_", " ").toUpperCase()}
+            </p>
           </div>
+          <Button onClick={fetchData} className="bg-blue-600 hover:bg-blue-700">
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Refresh Data
+          </Button>
         </div>
 
-        {/* Alerts */}
-        {error && (
-          <Alert className="bg-red-900/50 border-red-700 mb-6">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription className="text-red-200 flex items-center justify-between">
-              {error}
-              <Button onClick={clearMessages} variant="ghost" size="sm" className="text-red-200 hover:text-red-100">
-                ×
-              </Button>
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {success && (
-          <Alert className="bg-green-900/50 border-green-700 mb-6">
-            <CheckCircle className="h-4 w-4" />
-            <AlertDescription className="text-green-200 flex items-center justify-between">
-              {success}
-              <Button onClick={clearMessages} variant="ghost" size="sm" className="text-green-200 hover:text-green-100">
-                ×
-              </Button>
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* Stats Dashboard */}
-        {stats && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <Card className="bg-gray-800 border-gray-700">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-gray-400">Total Submissions</CardTitle>
-                <Music className="h-4 w-4 text-blue-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-white">{stats.submissions?.total || 0}</div>
-                <div className="flex items-center space-x-2 text-xs text-gray-400 mt-2">
-                  <span className="text-yellow-400">{stats.submissions?.pending || 0} pending</span>
-                  <span>•</span>
-                  <span className="text-green-400">{stats.submissions?.approved || 0} approved</span>
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <Card className="bg-gray-800 border-gray-700">
+            <CardContent className="p-6">
+              <div className="flex items-center">
+                <div className="p-3 bg-blue-500/20 rounded-lg">
+                  <FileText className="h-6 w-6 text-blue-400" />
                 </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-gray-800 border-gray-700">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-gray-400">Total Users</CardTitle>
-                <Users className="h-4 w-4 text-green-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-white">{stats.users?.total || 0}</div>
-                <div className="flex items-center space-x-2 text-xs text-gray-400 mt-2">
-                  <span className="text-blue-400">{(stats.users?.indie || 0) + (stats.users?.pro || 0)} paid</span>
-                  <span>•</span>
-                  <span className="text-gray-400">{stats.users?.creator || 0} free</span>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-400">Total Submissions</p>
+                  <p className="text-2xl font-bold text-white">{stats?.submissions.total || 0}</p>
+                  <div className="flex space-x-4 text-xs mt-1">
+                    <span className="text-yellow-400">{stats?.submissions.pending || 0} pending</span>
+                    <span className="text-green-400">{stats?.submissions.approved || 0} approved</span>
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </CardContent>
+          </Card>
 
-            <Card className="bg-gray-800 border-gray-700">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-gray-400">Recent Activity</CardTitle>
-                <TrendingUp className="h-4 w-4 text-purple-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-white">{stats.activity?.recentSubmissions || 0}</div>
-                <div className="text-xs text-gray-400 mt-2">Submissions (30 days)</div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-gray-800 border-gray-700">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-gray-400">Review Queue</CardTitle>
-                <Clock className="h-4 w-4 text-orange-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-white">
-                  {(stats.submissions?.pending || 0) + (stats.submissions?.in_review || 0)}
+          <Card className="bg-gray-800 border-gray-700">
+            <CardContent className="p-6">
+              <div className="flex items-center">
+                <div className="p-3 bg-green-500/20 rounded-lg">
+                  <Users className="h-6 w-6 text-green-400" />
                 </div>
-                <div className="text-xs text-gray-400 mt-2">Awaiting review</div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-400">Total Users</p>
+                  <p className="text-2xl font-bold text-white">{stats?.users.total || 0}</p>
+                  <div className="flex space-x-4 text-xs mt-1">
+                    <span className="text-blue-400">{(stats?.users.indie || 0) + (stats?.users.pro || 0)} paid</span>
+                    <span className="text-gray-400">{stats?.users.creator || 0} free</span>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gray-800 border-gray-700">
+            <CardContent className="p-6">
+              <div className="flex items-center">
+                <div className="p-3 bg-purple-500/20 rounded-lg">
+                  <BarChart3 className="h-6 w-6 text-purple-400" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-400">Recent Activity</p>
+                  <p className="text-2xl font-bold text-white">{stats?.activity.recentSubmissions || 0}</p>
+                  <p className="text-xs text-gray-400 mt-1">Submissions (30 days)</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gray-800 border-gray-700">
+            <CardContent className="p-6">
+              <div className="flex items-center">
+                <div className="p-3 bg-orange-500/20 rounded-lg">
+                  <Clock className="h-6 w-6 text-orange-400" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-400">Review Queue</p>
+                  <p className="text-2xl font-bold text-white">{stats?.submissions.pending || 0}</p>
+                  <p className="text-xs text-gray-400 mt-1">Awaiting review</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Main Content Tabs */}
-        <Tabs defaultValue="submissions" className="space-y-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="bg-gray-800 border-gray-700">
             <TabsTrigger value="submissions" className="data-[state=active]:bg-gray-700">
-              <Music className="h-4 w-4 mr-2" />
+              <FileText className="h-4 w-4 mr-2" />
               Submissions
             </TabsTrigger>
             <TabsTrigger value="users" className="data-[state=active]:bg-gray-700">
@@ -615,363 +359,298 @@ export function AdminPortal({ user }: { user: any }) {
               <BarChart3 className="h-4 w-4 mr-2" />
               Analytics
             </TabsTrigger>
-            {user.role === "master_dev" && (
-              <TabsTrigger value="system" className="data-[state=active]:bg-gray-700">
-                <Shield className="h-4 w-4 mr-2" />
-                System
-              </TabsTrigger>
-            )}
+            <TabsTrigger value="system" className="data-[state=active]:bg-gray-700">
+              <Settings className="h-4 w-4 mr-2" />
+              System
+            </TabsTrigger>
           </TabsList>
 
           {/* Submissions Tab */}
-          <TabsContent value="submissions" className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold">Submission Management</h2>
-              <div className="flex items-center space-x-4">
-                <div className="flex items-center space-x-2">
-                  <Search className="h-4 w-4 text-gray-400" />
-                  <Input
-                    placeholder="Search submissions..."
-                    value={submissionSearch}
-                    onChange={(e) => setSubmissionSearch(e.target.value)}
-                    className="w-64 bg-gray-800 border-gray-700 text-white"
-                  />
-                </div>
-                <Select value={submissionFilter} onValueChange={setSubmissionFilter}>
-                  <SelectTrigger className="w-40 bg-gray-800 border-gray-700 text-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-gray-800 border-gray-700">
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="in_review">In Review</SelectItem>
-                    <SelectItem value="approved">Approved</SelectItem>
-                    <SelectItem value="rejected">Rejected</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button onClick={handleExportSubmissions} variant="outline" className="border-gray-600 bg-transparent">
-                  <Download className="h-4 w-4 mr-2" />
-                  Export
-                </Button>
-              </div>
-            </div>
-
-            {/* Bulk Actions */}
-            {selectedSubmissions.length > 0 && (
-              <Card className="bg-blue-900/20 border-blue-700">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-blue-200">{selectedSubmissions.length} submission(s) selected</span>
-                    <div className="flex items-center space-x-2">
-                      <Select value={bulkAction} onValueChange={setBulkAction}>
-                        <SelectTrigger className="w-40 bg-gray-800 border-gray-700 text-white">
-                          <SelectValue placeholder="Bulk Action" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-gray-800 border-gray-700">
-                          <SelectItem value="approve">Approve All</SelectItem>
-                          <SelectItem value="reject">Reject All</SelectItem>
-                          <SelectItem value="pending">Mark Pending</SelectItem>
-                          <SelectItem value="in_review">Mark In Review</SelectItem>
-                          <SelectItem value="delete">Delete All</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        onClick={() => handleBulkAction(bulkAction, selectedSubmissions)}
-                        disabled={!bulkAction}
-                        className="bg-blue-600 hover:bg-blue-700"
-                      >
-                        Apply
-                      </Button>
-                      <Button onClick={() => setSelectedSubmissions([])} variant="outline" className="border-gray-600">
-                        Clear
-                      </Button>
+          <TabsContent value="submissions">
+            <Card className="bg-gray-800 border-gray-700">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-white">Submission Management</CardTitle>
+                  <div className="flex items-center space-x-2">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                      <Input
+                        placeholder="Search submissions..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-10 w-64 bg-gray-700 border-gray-600 text-white"
+                      />
                     </div>
+                    <Select value={statusFilter} onValueChange={setStatusFilter}>
+                      <SelectTrigger className="w-32 bg-gray-700 border-gray-600">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-gray-700 border-gray-600">
+                        <SelectItem value="all">All Status</SelectItem>
+                        <SelectItem value="pending">Pending</SelectItem>
+                        <SelectItem value="in_review">In Review</SelectItem>
+                        <SelectItem value="approved">Approved</SelectItem>
+                        <SelectItem value="rejected">Rejected</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
-                </CardContent>
-              </Card>
-            )}
-
-            <div className="grid gap-4">
-              {submissions.length === 0 ? (
-                <Card className="bg-gray-800 border-gray-700">
-                  <CardContent className="p-6 text-center">
-                    <Music className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-400">No submissions found</p>
-                    <p className="text-sm text-gray-500 mt-2">
-                      {submissionFilter !== "all" || submissionSearch
-                        ? "Try adjusting your filters"
-                        : "Submissions will appear here when users start uploading"}
-                    </p>
-                  </CardContent>
-                </Card>
-              ) : (
-                submissions.map((submission) => (
-                  <Card key={submission.id} className="bg-gray-800 border-gray-700">
-                    <CardContent className="p-6">
-                      <div className="flex items-start space-x-4">
-                        <input
-                          type="checkbox"
-                          checked={selectedSubmissions.includes(submission.id)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedSubmissions([...selectedSubmissions, submission.id])
-                            } else {
-                              setSelectedSubmissions(selectedSubmissions.filter((id) => id !== submission.id))
-                            }
-                          }}
-                          className="mt-1 rounded border-gray-600 bg-gray-700"
-                        />
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-4 mb-3">
-                            <h3 className="text-lg font-semibold text-white">{submission.tracks.title}</h3>
-                            {getStatusBadge(submission.status)}
-                            <Badge className="bg-gray-600 text-white text-xs">ID: {submission.id.slice(0, 8)}</Badge>
-                          </div>
-                          <div className="text-gray-400 space-y-1">
-                            <p className="flex items-center">
-                              <Headphones className="h-4 w-4 mr-2" />
-                              Artist: {submission.tracks.artist}
-                            </p>
-                            <p className="flex items-center">
-                              <Mail className="h-4 w-4 mr-2" />
-                              Submitted by: {submission.users.name} ({submission.users.email})
-                            </p>
-                            <p className="flex items-center">
-                              <Clock className="h-4 w-4 mr-2" />
-                              Duration: {formatDuration(submission.tracks.duration)}
-                            </p>
-                            <p className="flex items-center">
-                              <Calendar className="h-4 w-4 mr-2" />
-                              Submitted: {formatRelativeTime(submission.created_at)}
-                            </p>
-                            {submission.updated_at !== submission.created_at && (
-                              <p className="flex items-center">
-                                <RefreshCw className="h-4 w-4 mr-2" />
-                                Last updated: {formatRelativeTime(submission.updated_at)}
-                              </p>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-gray-700">
+                        <th className="text-left p-3 text-gray-300">Track</th>
+                        <th className="text-left p-3 text-gray-300">Artist</th>
+                        <th className="text-left p-3 text-gray-300">User</th>
+                        <th className="text-left p-3 text-gray-300">Status</th>
+                        <th className="text-left p-3 text-gray-300">Rating</th>
+                        <th className="text-left p-3 text-gray-300">Submitted</th>
+                        <th className="text-left p-3 text-gray-300">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredSubmissions.map((submission) => (
+                        <tr key={submission.id} className="border-b border-gray-700 hover:bg-gray-700/50">
+                          <td className="p-3">
+                            <div className="flex items-center space-x-3">
+                              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-lg flex items-center justify-center">
+                                <Music className="h-5 w-5 text-white" />
+                              </div>
+                              <div>
+                                <p className="font-medium text-white">{submission.title}</p>
+                                <p className="text-sm text-gray-400">{submission.genre}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="p-3 text-gray-300">{submission.artist_name}</td>
+                          <td className="p-3">
+                            <div>
+                              <p className="text-gray-300">{submission.users?.name}</p>
+                              <p className="text-xs text-gray-500">{submission.users?.email}</p>
+                            </div>
+                          </td>
+                          <td className="p-3">
+                            <Badge
+                              className={`${
+                                submission.status === "approved"
+                                  ? "bg-green-500/20 text-green-400"
+                                  : submission.status === "pending"
+                                    ? "bg-yellow-500/20 text-yellow-400"
+                                    : submission.status === "in_review"
+                                      ? "bg-blue-500/20 text-blue-400"
+                                      : "bg-red-500/20 text-red-400"
+                              }`}
+                            >
+                              {submission.status.replace("_", " ")}
+                            </Badge>
+                          </td>
+                          <td className="p-3">
+                            {submission.admin_rating ? (
+                              <div className="flex items-center space-x-1">
+                                <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                                <span className="text-yellow-400">{submission.admin_rating}</span>
+                              </div>
+                            ) : (
+                              <span className="text-gray-500">Unrated</span>
                             )}
-                          </div>
-                        </div>
-                        <div className="flex flex-col space-y-2">
-                          <div className="flex items-center space-x-2">
-                            <Button
-                              onClick={() => handlePlayAudio(submission.tracks.file_url, submission.id)}
-                              variant="outline"
-                              size="sm"
-                              className="border-gray-600 bg-transparent"
-                            >
-                              {currentlyPlaying === submission.id && isPlaying ? (
-                                <Pause className="h-4 w-4 mr-1" />
-                              ) : (
-                                <Play className="h-4 w-4 mr-1" />
+                          </td>
+                          <td className="p-3 text-gray-400 text-sm">
+                            {new Date(submission.submitted_at).toLocaleDateString()}
+                          </td>
+                          <td className="p-3">
+                            <div className="flex space-x-2">
+                              {submission.file_url && (
+                                <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white">
+                                  <Play className="h-4 w-4" />
+                                </Button>
                               )}
-                              {currentlyPlaying === submission.id && isPlaying ? "Pause" : "Play"}
-                            </Button>
-                            <Button
-                              onClick={() => window.open(submission.tracks.file_url, "_blank")}
-                              variant="outline"
-                              size="sm"
-                              className="border-gray-600 bg-transparent"
-                            >
-                              <Download className="h-4 w-4 mr-1" />
-                              Download
-                            </Button>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <Button
-                              onClick={() => {
-                                setReviewingSubmission(submission)
-                                setReviewStatus(submission.status)
-                              }}
-                              size="sm"
-                              className="bg-blue-600 hover:bg-blue-700"
-                            >
-                              <MessageSquare className="h-4 w-4 mr-1" />
-                              Review
-                            </Button>
-                            <Button
-                              onClick={() => handleDeleteSubmission(submission.id)}
-                              variant="destructive"
-                              size="sm"
-                              className="bg-red-600 hover:bg-red-700"
-                            >
-                              <Trash2 className="h-4 w-4 mr-1" />
-                              Delete
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))
-              )}
-            </div>
-
-            {/* Pagination */}
-            <div className="flex items-center justify-between">
-              <div className="text-sm text-gray-400">
-                Showing {Math.min((currentPage - 1) * 10 + 1, submissions.length)} to{" "}
-                {Math.min(currentPage * 10, submissions.length)} of {submissions.length} submissions
-              </div>
-              <div className="flex items-center space-x-2">
-                <Button
-                  onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                  disabled={currentPage === 1}
-                  variant="outline"
-                  size="sm"
-                  className="border-gray-600"
-                >
-                  Previous
-                </Button>
-                <span className="text-sm text-gray-400">Page {currentPage}</span>
-                <Button
-                  onClick={() => setCurrentPage(currentPage + 1)}
-                  disabled={submissions.length < 10}
-                  variant="outline"
-                  size="sm"
-                  className="border-gray-600"
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
+                              <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white">
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* Users Tab */}
-          <TabsContent value="users" className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold">User Management</h2>
-              <div className="flex items-center space-x-4">
-                <div className="flex items-center space-x-2">
-                  <Search className="h-4 w-4 text-gray-400" />
-                  <Input
-                    placeholder="Search users..."
-                    value={userSearch}
-                    onChange={(e) => setUserSearch(e.target.value)}
-                    className="w-64 bg-gray-800 border-gray-700 text-white"
-                  />
-                </div>
-                <Select value={userFilter} onValueChange={setUserFilter}>
-                  <SelectTrigger className="w-40 bg-gray-800 border-gray-700 text-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-gray-800 border-gray-700">
-                    <SelectItem value="all">All Roles</SelectItem>
-                    <SelectItem value="user">Users</SelectItem>
-                    <SelectItem value="admin">Admins</SelectItem>
-                    <SelectItem value="master_dev">Master Devs</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="grid gap-4">
-              {users.length === 0 ? (
-                <Card className="bg-gray-800 border-gray-700">
-                  <CardContent className="p-6 text-center">
-                    <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-400">No users found</p>
-                    <p className="text-sm text-gray-500 mt-2">
-                      {userFilter !== "all" || userSearch
-                        ? "Try adjusting your filters"
-                        : "Users will appear here when they sign up"}
-                    </p>
-                  </CardContent>
-                </Card>
-              ) : (
-                users.map((userData) => (
-                  <Card key={userData.id} className="bg-gray-800 border-gray-700">
-                    <CardContent className="p-6">
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-4 mb-3">
-                            <h3 className="text-lg font-semibold text-white">{userData.name}</h3>
-                            {getTierBadge(userData.tier)}
-                            {getRoleBadge(userData.role)}
-                            {userData.is_verified ? (
-                              <Badge className="bg-green-500 text-white">
-                                <UserCheck className="h-3 w-3 mr-1" />
-                                Verified
-                              </Badge>
-                            ) : (
-                              <Badge className="bg-yellow-500 text-white">
-                                <UserX className="h-3 w-3 mr-1" />
-                                Unverified
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="text-gray-400 space-y-1">
-                            <p className="flex items-center">
-                              <Mail className="h-4 w-4 mr-2" />
-                              Email: {userData.email}
-                            </p>
-                            <p className="flex items-center">
-                              <CreditCard className="h-4 w-4 mr-2" />
-                              Credits:{" "}
-                              {userData.submission_credits === 999999 ? "Unlimited" : userData.submission_credits}
-                            </p>
-                            <p className="flex items-center">
-                              <Calendar className="h-4 w-4 mr-2" />
-                              Joined: {formatRelativeTime(userData.created_at)}
-                            </p>
-                            <p className="flex items-center">
-                              <Activity className="h-4 w-4 mr-2" />
-                              Last updated: {formatRelativeTime(userData.updated_at)}
-                            </p>
-                          </div>
-                        </div>
-                        {user.role === "master_dev" && (
-                          <div className="flex items-center space-x-2">
-                            <Button
-                              onClick={() => {
-                                setEditingUser(userData)
-                                setEditUserTier(userData.tier)
-                                setEditUserRole(userData.role)
-                                setEditUserCredits(userData.submission_credits)
-                                setEditUserVerified(userData.is_verified)
-                              }}
-                              className="bg-purple-600 hover:bg-purple-700"
-                            >
-                              <Edit className="h-4 w-4 mr-2" />
-                              Edit
-                            </Button>
-                            {userData.role !== "master_dev" && (
-                              <Button
-                                onClick={() => handleDeleteUser(userData.id)}
-                                variant="destructive"
-                                className="bg-red-600 hover:bg-red-700"
-                              >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Delete
-                              </Button>
-                            )}
-                          </div>
-                        )}
+          <TabsContent value="users">
+            <Card className="bg-gray-800 border-gray-700">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-white">User Management</CardTitle>
+                  <div className="flex items-center space-x-2">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                      <Input
+                        placeholder="Search users..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-10 w-64 bg-gray-700 border-gray-600 text-white"
+                      />
+                    </div>
+                    <Select value={tierFilter} onValueChange={setTierFilter}>
+                      <SelectTrigger className="w-32 bg-gray-700 border-gray-600">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-gray-700 border-gray-600">
+                        <SelectItem value="all">All Tiers</SelectItem>
+                        <SelectItem value="creator">Creator</SelectItem>
+                        <SelectItem value="indie">Indie</SelectItem>
+                        <SelectItem value="pro">Pro</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {selectedUsers.length > 0 && (
+                      <div className="flex space-x-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleBulkUserAction("grant_credits")}
+                          className="border-gray-600"
+                        >
+                          <Plus className="h-4 w-4 mr-1" />
+                          Grant Credits
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleBulkUserAction("suspend")}
+                          className="border-gray-600 text-red-400"
+                        >
+                          <Minus className="h-4 w-4 mr-1" />
+                          Suspend
+                        </Button>
                       </div>
-                    </CardContent>
-                  </Card>
-                ))
-              )}
-            </div>
+                    )}
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-gray-700">
+                        <th className="text-left p-3 text-gray-300">
+                          <input
+                            type="checkbox"
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedUsers(filteredUsers.map((u) => u.id))
+                              } else {
+                                setSelectedUsers([])
+                              }
+                            }}
+                            className="rounded bg-gray-700 border-gray-600"
+                          />
+                        </th>
+                        <th className="text-left p-3 text-gray-300">User</th>
+                        <th className="text-left p-3 text-gray-300">Role</th>
+                        <th className="text-left p-3 text-gray-300">Tier</th>
+                        <th className="text-left p-3 text-gray-300">Credits</th>
+                        <th className="text-left p-3 text-gray-300">Submissions</th>
+                        <th className="text-left p-3 text-gray-300">Last Login</th>
+                        <th className="text-left p-3 text-gray-300">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredUsers.map((user) => (
+                        <tr key={user.id} className="border-b border-gray-700 hover:bg-gray-700/50">
+                          <td className="p-3">
+                            <input
+                              type="checkbox"
+                              checked={selectedUsers.includes(user.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedUsers([...selectedUsers, user.id])
+                                } else {
+                                  setSelectedUsers(selectedUsers.filter((id) => id !== user.id))
+                                }
+                              }}
+                              className="rounded bg-gray-700 border-gray-600"
+                            />
+                          </td>
+                          <td className="p-3">
+                            <div>
+                              <p className="font-medium text-white">{user.name}</p>
+                              <p className="text-sm text-gray-400">{user.email}</p>
+                            </div>
+                          </td>
+                          <td className="p-3">
+                            <Badge
+                              className={`${
+                                user.role === "master_dev"
+                                  ? "bg-yellow-500/20 text-yellow-400"
+                                  : user.role === "admin"
+                                    ? "bg-blue-500/20 text-blue-400"
+                                    : "bg-gray-500/20 text-gray-400"
+                              }`}
+                            >
+                              {user.role.replace("_", " ")}
+                            </Badge>
+                          </td>
+                          <td className="p-3">
+                            <Badge
+                              className={`${
+                                user.tier === "pro"
+                                  ? "bg-purple-500/20 text-purple-400"
+                                  : user.tier === "indie"
+                                    ? "bg-green-500/20 text-green-400"
+                                    : "bg-gray-500/20 text-gray-400"
+                              }`}
+                            >
+                              {user.tier}
+                            </Badge>
+                          </td>
+                          <td className="p-3 text-gray-300">{user.submission_credits}</td>
+                          <td className="p-3 text-gray-300">{user.total_submissions || 0}</td>
+                          <td className="p-3 text-gray-400 text-sm">
+                            {user.last_login ? new Date(user.last_login).toLocaleDateString() : "Never"}
+                          </td>
+                          <td className="p-3">
+                            <div className="flex space-x-2">
+                              <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white">
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button variant="ghost" size="sm" className="text-gray-400 hover:text-red-400">
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* Media Tab */}
-          <TabsContent value="media" className="space-y-6">
-            <div className="grid lg:grid-cols-2 gap-6">
+          <TabsContent value="media">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+              {/* Sync YouTube Video */}
               <Card className="bg-gray-800 border-gray-700">
                 <CardHeader>
-                  <CardTitle className="flex items-center">
+                  <CardTitle className="text-white flex items-center">
                     <Youtube className="h-5 w-5 mr-2 text-red-500" />
                     Sync YouTube Video
                   </CardTitle>
-                  <CardDescription className="text-gray-400">
-                    Add YouTube videos to the platform media library
-                  </CardDescription>
+                  <p className="text-gray-400 text-sm">Add YouTube videos to the platform media library</p>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
-                    <Label className="text-white">YouTube URL</Label>
+                    <Label htmlFor="youtube-url" className="text-gray-300">
+                      YouTube URL
+                    </Label>
                     <Input
+                      id="youtube-url"
                       placeholder="https://youtube.com/watch?v=..."
                       value={youtubeUrl}
                       onChange={(e) => setYoutubeUrl(e.target.value)}
@@ -979,59 +658,56 @@ export function AdminPortal({ user }: { user: any }) {
                     />
                   </div>
                   <div>
-                    <Label className="text-white">Title</Label>
+                    <Label htmlFor="video-title" className="text-gray-300">
+                      Title
+                    </Label>
                     <Input
+                      id="video-title"
                       placeholder="Video title"
-                      value={mediaTitle}
-                      onChange={(e) => setMediaTitle(e.target.value)}
+                      value={videoTitle}
+                      onChange={(e) => setVideoTitle(e.target.value)}
                       className="bg-gray-700 border-gray-600 text-white"
                     />
                   </div>
                   <div>
-                    <Label className="text-white">Description</Label>
+                    <Label htmlFor="video-description" className="text-gray-300">
+                      Description
+                    </Label>
                     <Textarea
+                      id="video-description"
                       placeholder="Video description"
-                      value={mediaDescription}
-                      onChange={(e) => setMediaDescription(e.target.value)}
-                      className="bg-gray-700 border-gray-600 text-white min-h-32"
+                      value={videoDescription}
+                      onChange={(e) => setVideoDescription(e.target.value)}
+                      className="bg-gray-700 border-gray-600 text-white"
+                      rows={3}
                     />
                   </div>
                   <Button
-                    onClick={handleSyncYouTube}
+                    onClick={handleSyncYouTubeVideo}
+                    disabled={uploadingMedia || !youtubeUrl.trim()}
                     className="w-full bg-red-600 hover:bg-red-700"
-                    disabled={uploadingMedia}
                   >
-                    {uploadingMedia ? (
-                      <>
-                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                        Syncing...
-                      </>
-                    ) : (
-                      <>
-                        <Youtube className="h-4 w-4 mr-2" />
-                        Sync YouTube Video
-                      </>
-                    )}
+                    <Youtube className="h-4 w-4 mr-2" />
+                    {uploadingMedia ? "Syncing..." : "Sync YouTube Video"}
                   </Button>
                 </CardContent>
               </Card>
 
+              {/* Upload Custom Media */}
               <Card className="bg-gray-800 border-gray-700">
                 <CardHeader>
-                  <CardTitle className="flex items-center">
+                  <CardTitle className="text-white flex items-center">
                     <Upload className="h-5 w-5 mr-2 text-blue-500" />
                     Upload Custom Media
                   </CardTitle>
-                  <CardDescription className="text-gray-400">
-                    Upload custom audio, video, or image files
-                  </CardDescription>
+                  <p className="text-gray-400 text-sm">Upload custom audio, video, or image files</p>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent>
                   <div className="border-2 border-dashed border-gray-600 rounded-lg p-8 text-center">
-                    <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <Upload className="h-12 w-12 text-gray-500 mx-auto mb-4" />
                     <p className="text-gray-400 mb-2">Drag and drop files here</p>
-                    <p className="text-sm text-gray-500">or click to browse</p>
-                    <Button variant="outline" className="mt-4 border-gray-600 bg-transparent">
+                    <p className="text-gray-500 text-sm mb-4">or click to browse</p>
+                    <Button variant="outline" className="border-gray-600 bg-transparent">
                       Choose Files
                     </Button>
                   </div>
@@ -1042,46 +718,41 @@ export function AdminPortal({ user }: { user: any }) {
             {/* Media Library */}
             <Card className="bg-gray-800 border-gray-700">
               <CardHeader>
-                <CardTitle>Media Library</CardTitle>
-                <CardDescription className="text-gray-400">Manage uploaded media files</CardDescription>
+                <CardTitle className="text-white">Media Library</CardTitle>
+                <p className="text-gray-400 text-sm">Manage uploaded media files</p>
               </CardHeader>
               <CardContent>
                 {media.length === 0 ? (
-                  <div className="text-center py-8">
-                    <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-400">No media files found</p>
-                    <p className="text-sm text-gray-500 mt-2">Upload or sync media to get started</p>
+                  <div className="text-center py-12">
+                    <Youtube className="h-12 w-12 text-gray-500 mx-auto mb-4" />
+                    <p className="text-gray-400">No media files uploaded yet</p>
+                    <p className="text-gray-500 text-sm">Upload your first video or audio file to get started</p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {media.map((item) => (
-                      <Card key={item.id} className="bg-gray-700 border-gray-600">
-                        <CardContent className="p-4">
-                          <div className="aspect-video bg-gray-600 rounded-lg mb-3 flex items-center justify-center">
-                            {item.media_type === "youtube" ? (
-                              <Youtube className="h-8 w-8 text-red-500" />
-                            ) : (
-                              <FileText className="h-8 w-8 text-gray-400" />
-                            )}
-                          </div>
-                          <h4 className="font-semibold text-white truncate">{item.title}</h4>
-                          <p className="text-sm text-gray-400 mt-1 line-clamp-2">{item.description}</p>
-                          <div className="flex items-center justify-between mt-3">
-                            <Badge className="bg-blue-500 text-white text-xs">{item.media_type.toUpperCase()}</Badge>
-                            <div className="flex space-x-1">
-                              <Button size="sm" variant="ghost" className="text-gray-400 hover:text-white">
-                                <Eye className="h-3 w-3" />
-                              </Button>
-                              <Button size="sm" variant="ghost" className="text-gray-400 hover:text-white">
-                                <Edit className="h-3 w-3" />
-                              </Button>
-                              <Button size="sm" variant="ghost" className="text-gray-400 hover:text-red-400">
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
+                      <div key={item.id} className="bg-gray-700 rounded-lg p-4">
+                        <div className="aspect-video bg-gray-600 rounded-lg mb-3 flex items-center justify-center">
+                          {item.type === "youtube" ? (
+                            <Youtube className="h-8 w-8 text-red-500" />
+                          ) : (
+                            <Upload className="h-8 w-8 text-blue-500" />
+                          )}
+                        </div>
+                        <h4 className="text-white font-medium truncate">{item.title}</h4>
+                        <p className="text-gray-400 text-sm mt-1">{new Date(item.created_at).toLocaleDateString()}</p>
+                        <div className="flex space-x-2 mt-3">
+                          <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white">
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white">
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="sm" className="text-gray-400 hover:text-red-400">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -1090,349 +761,121 @@ export function AdminPortal({ user }: { user: any }) {
           </TabsContent>
 
           {/* Analytics Tab */}
-          <TabsContent value="analytics" className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <TabsContent value="analytics">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card className="bg-gray-800 border-gray-700">
                 <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <BarChart3 className="h-5 w-5 mr-2 text-blue-500" />
-                    Submission Trends
-                  </CardTitle>
+                  <CardTitle className="text-white">Submission Analytics</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-center py-8">
-                    <BarChart3 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-400">Analytics coming soon</p>
-                    <p className="text-sm text-gray-500 mt-2">Detailed charts and insights will be available here</p>
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400">Total Submissions</span>
+                      <span className="text-white font-medium">{stats?.submissions.total || 0}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400">Pending Review</span>
+                      <span className="text-yellow-400 font-medium">{stats?.submissions.pending || 0}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400">Approved</span>
+                      <span className="text-green-400 font-medium">{stats?.submissions.approved || 0}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400">Rejected</span>
+                      <span className="text-red-400 font-medium">{stats?.submissions.rejected || 0}</span>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
 
               <Card className="bg-gray-800 border-gray-700">
                 <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <TrendingUp className="h-5 w-5 mr-2 text-green-500" />
-                    User Growth
-                  </CardTitle>
+                  <CardTitle className="text-white">User Analytics</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-center py-8">
-                    <TrendingUp className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-400">Growth metrics coming soon</p>
-                    <p className="text-sm text-gray-500 mt-2">User registration and engagement data</p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-gray-800 border-gray-700">
-                <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <Activity className="h-5 w-5 mr-2 text-purple-500" />
-                    Platform Activity
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-center py-8">
-                    <Activity className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-400">Activity metrics coming soon</p>
-                    <p className="text-sm text-gray-500 mt-2">Real-time platform usage statistics</p>
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400">Total Users</span>
+                      <span className="text-white font-medium">{stats?.users.total || 0}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400">Creator Tier</span>
+                      <span className="text-gray-400 font-medium">{stats?.users.creator || 0}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400">Indie Tier</span>
+                      <span className="text-green-400 font-medium">{stats?.users.indie || 0}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400">Pro Tier</span>
+                      <span className="text-purple-400 font-medium">{stats?.users.pro || 0}</span>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
             </div>
           </TabsContent>
 
-          {/* System Tab (Master Dev Only) */}
-          {user.role === "master_dev" && (
-            <TabsContent value="system" className="space-y-6">
-              <Card className="bg-gradient-to-r from-red-900/50 to-purple-900/50 border-red-500/50">
+          {/* System Tab */}
+          <TabsContent value="system">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card className="bg-gray-800 border-gray-700">
                 <CardHeader>
-                  <CardTitle className="flex items-center text-red-400">
-                    <Shield className="h-5 w-5 mr-2" />
-                    Master Developer System Console
-                  </CardTitle>
-                  <CardDescription className="text-red-300">
-                    Advanced system controls and database management
-                  </CardDescription>
+                  <CardTitle className="text-white">System Health</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="grid md:grid-cols-2 gap-6">
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-semibold text-white">System Controls</h3>
-                      <div className="space-y-2">
-                        <Button
-                          onClick={() => router.push("/admin/settings")}
-                          className="w-full bg-orange-600 hover:bg-orange-700"
-                        >
-                          <Settings className="h-4 w-4 mr-2" />
-                          System Settings
-                        </Button>
-                        <Button
-                          onClick={async () => {
-                            setLoading(true)
-                            try {
-                              await fetch("/api/admin/system/clear-cache", { method: "POST" })
-                              setSuccess("All caches cleared successfully")
-                            } catch (err) {
-                              setError("Failed to clear caches")
-                            } finally {
-                              setLoading(false)
-                            }
-                          }}
-                          className="w-full bg-purple-600 hover:bg-purple-700"
-                        >
-                          <RefreshCw className="h-4 w-4 mr-2" />
-                          Clear All Caches
-                        </Button>
-                        <Button
-                          onClick={() => router.push("/admin/database")}
-                          className="w-full bg-blue-600 hover:bg-blue-700"
-                        >
-                          <Database className="h-4 w-4 mr-2" />
-                          Database Tools
-                        </Button>
-                        <Button
-                          onClick={() => router.push("/admin/server-status")}
-                          className="w-full bg-green-600 hover:bg-green-700"
-                        >
-                          <Server className="h-4 w-4 mr-2" />
-                          Server Status
-                        </Button>
-                      </div>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400">Database Status</span>
+                      <Badge className="bg-green-500/20 text-green-400">Healthy</Badge>
                     </div>
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-semibold text-white">Emergency Controls</h3>
-                      <div className="space-y-2">
-                        <Button
-                          onClick={() => router.push("/admin/performance")}
-                          className="w-full bg-yellow-600 hover:bg-yellow-700"
-                        >
-                          <Zap className="h-4 w-4 mr-2" />
-                          Performance Monitor
-                        </Button>
-                        <Button
-                          onClick={async () => {
-                            setLoading(true)
-                            try {
-                              const response = await fetch("/api/admin/system/export-data")
-                              const blob = await response.blob()
-                              const url = window.URL.createObjectURL(blob)
-                              const a = document.createElement("a")
-                              a.href = url
-                              a.download = `system-export-${new Date().toISOString().split("T")[0]}.zip`
-                              document.body.appendChild(a)
-                              a.click()
-                              window.URL.revokeObjectURL(url)
-                              document.body.removeChild(a)
-                              setSuccess("System data exported successfully")
-                            } catch (err) {
-                              setError("Failed to export system data")
-                            } finally {
-                              setLoading(false)
-                            }
-                          }}
-                          className="w-full bg-indigo-600 hover:bg-indigo-700"
-                        >
-                          <Download className="h-4 w-4 mr-2" />
-                          Export Data
-                        </Button>
-                        <Button
-                          onClick={() => {
-                            if (
-                              confirm(
-                                "Are you sure you want to perform an emergency reset? This will restart all services.",
-                              )
-                            ) {
-                              setLoading(true)
-                              fetch("/api/admin/system/emergency-reset", { method: "POST" })
-                                .then(() => setSuccess("Emergency reset initiated"))
-                                .catch(() => setError("Failed to initiate emergency reset"))
-                                .finally(() => setLoading(false))
-                            }
-                          }}
-                          className="w-full bg-red-600 hover:bg-red-700"
-                        >
-                          <AlertCircle className="h-4 w-4 mr-2" />
-                          Emergency Reset
-                        </Button>
-                      </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400">Storage Status</span>
+                      <Badge className="bg-green-500/20 text-green-400">Healthy</Badge>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400">API Status</span>
+                      <Badge className="bg-green-500/20 text-green-400">Healthy</Badge>
                     </div>
                   </div>
-
-                  <Alert className="bg-yellow-900/50 border-yellow-700">
-                    <Crown className="h-4 w-4" />
-                    <AlertDescription className="text-yellow-200">
-                      <strong>Master Developer Access:</strong> You have unrestricted access to all system functions.
-                      Use these controls responsibly as they can affect the entire platform.
-                    </AlertDescription>
-                  </Alert>
                 </CardContent>
               </Card>
-            </TabsContent>
-          )}
+
+              {user?.role === "master_dev" && (
+                <Card className="bg-gray-800 border-gray-700">
+                  <CardHeader>
+                    <CardTitle className="text-white text-red-400">Master Dev Actions</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start border-blue-600 text-blue-400 bg-transparent"
+                    >
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Clear System Cache
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start border-green-600 text-green-400 bg-transparent"
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Export All Data
+                    </Button>
+                    <Separator className="bg-gray-700" />
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start border-red-600 text-red-400 bg-transparent"
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Emergency Reset
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </TabsContent>
         </Tabs>
-
-        {/* Review Modal */}
-        {reviewingSubmission && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-            <Card className="bg-gray-800 border-gray-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-              <CardHeader>
-                <CardTitle className="text-white">Review: {reviewingSubmission.tracks.title}</CardTitle>
-                <CardDescription className="text-gray-400">
-                  by {reviewingSubmission.tracks.artist} • Submitted by {reviewingSubmission.users.name}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label className="text-white">Review Status</Label>
-                  <Select value={reviewStatus} onValueChange={setReviewStatus}>
-                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
-                      <SelectValue placeholder="Select status" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-gray-800 border-gray-700">
-                      <SelectItem value="pending">Pending</SelectItem>
-                      <SelectItem value="in_review">In Review</SelectItem>
-                      <SelectItem value="approved">Approved</SelectItem>
-                      <SelectItem value="rejected">Rejected</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="text-white">Rating (1-5)</Label>
-                  <div className="flex items-center space-x-2 mt-2">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <button
-                        key={star}
-                        onClick={() => setReviewRating(star)}
-                        className={`${
-                          star <= reviewRating ? "text-yellow-400" : "text-gray-600"
-                        } hover:text-yellow-400 transition-colors`}
-                      >
-                        <Star className="h-6 w-6 fill-current" />
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-white">Feedback</Label>
-                  <Textarea
-                    placeholder="Provide detailed feedback..."
-                    value={reviewFeedback}
-                    onChange={(e) => setReviewFeedback(e.target.value)}
-                    className="bg-gray-700 border-gray-600 text-white min-h-32"
-                  />
-                </div>
-                <div>
-                  <Label className="text-white">Tags (comma separated)</Label>
-                  <Input
-                    placeholder="e.g., catchy, needs mixing, great vocals"
-                    value={reviewTags.join(", ")}
-                    onChange={(e) =>
-                      setReviewTags(
-                        e.target.value
-                          .split(",")
-                          .map((tag) => tag.trim())
-                          .filter(Boolean),
-                      )
-                    }
-                    className="bg-gray-700 border-gray-600 text-white"
-                  />
-                </div>
-                <div className="flex justify-end space-x-2 pt-4">
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setReviewingSubmission(null)
-                      setReviewFeedback("")
-                      setReviewRating(0)
-                      setReviewStatus("")
-                      setReviewTags([])
-                    }}
-                    className="border-gray-600"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleReviewSubmission}
-                    className="bg-blue-600 hover:bg-blue-700"
-                    disabled={!reviewStatus}
-                  >
-                    Submit Review
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
-        {/* Edit User Modal */}
-        {editingUser && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-            <Card className="bg-gray-800 border-gray-700 w-full max-w-md">
-              <CardHeader>
-                <CardTitle className="text-white">Edit User: {editingUser.name}</CardTitle>
-                <CardDescription className="text-gray-400">{editingUser.email}</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label className="text-white">Tier</Label>
-                  <Select value={editUserTier} onValueChange={setEditUserTier}>
-                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-gray-800 border-gray-700">
-                      <SelectItem value="creator">Creator</SelectItem>
-                      <SelectItem value="indie">Indie</SelectItem>
-                      <SelectItem value="pro">Pro</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="text-white">Role</Label>
-                  <Select value={editUserRole} onValueChange={setEditUserRole}>
-                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-gray-800 border-gray-700">
-                      <SelectItem value="user">User</SelectItem>
-                      <SelectItem value="admin">Admin</SelectItem>
-                      <SelectItem value="master_dev">Master Dev</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="text-white">Submission Credits</Label>
-                  <Input
-                    type="number"
-                    value={editUserCredits}
-                    onChange={(e) => setEditUserCredits(Number.parseInt(e.target.value) || 0)}
-                    className="bg-gray-700 border-gray-600 text-white"
-                  />
-                </div>
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    id="verified"
-                    checked={editUserVerified}
-                    onChange={(e) => setEditUserVerified(e.target.checked)}
-                    className="rounded border-gray-600 bg-gray-700"
-                  />
-                  <Label htmlFor="verified" className="text-white">
-                    Verified Account
-                  </Label>
-                </div>
-                <div className="flex justify-end space-x-2 pt-4">
-                  <Button variant="outline" onClick={() => setEditingUser(null)} className="border-gray-600">
-                    Cancel
-                  </Button>
-                  <Button onClick={handleEditUser} className="bg-purple-600 hover:bg-purple-700">
-                    Update User
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
       </div>
     </div>
   )

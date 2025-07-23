@@ -1,131 +1,116 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
-import { cookies } from "next/headers"
+import { createClient } from "@/lib/supabase/server"
+import { getCurrentUser } from "@/lib/supabase/auth"
+
+export const dynamic = "force-dynamic"
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
+    const user = await getCurrentUser()
 
-    // Check authentication
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
-    if (!session) {
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Get user data
-    const { data: userData, error: userError } = await supabase
-      .from("users")
-      .select("tier, submission_credits")
-      .eq("id", session.user.id)
-      .single()
-
-    if (userError) {
-      return NextResponse.json({ error: "Failed to fetch user data" }, { status: 500 })
+    // Check if user has submission credits
+    if (user.submission_credits <= 0 && user.role !== "master_dev") {
+      return NextResponse.json(
+        {
+          error: "Insufficient credits",
+          message: "You need submission credits to submit music",
+        },
+        { status: 400 },
+      )
     }
 
-    // Check if user has credits
-    if (userData.submission_credits <= 0 && userData.tier === "creator") {
-      return NextResponse.json({ error: "No submission credits available" }, { status: 403 })
-    }
-
-    // Parse request body
-    const formData = await request.formData()
-    const title = formData.get("title") as string
-    const artist = formData.get("artist") as string
-    const genre = formData.get("genre") as string
-    const description = formData.get("description") as string
-    const moodTags = formData.get("mood_tags") as string
-    const file = formData.get("file") as File
-
-    // Validate required fields
-    if (!title || !artist || !genre || !file) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
-    }
-
-    // Validate file type
-    const acceptedTypes = ["audio/mpeg", "audio/wav", "audio/x-m4a", "audio/aac"]
-    if (!acceptedTypes.includes(file.type)) {
-      return NextResponse.json({ error: "Invalid file type" }, { status: 400 })
-    }
-
-    // Validate file size (50MB max)
-    const maxSize = 50 * 1024 * 1024
-    if (file.size > maxSize) {
-      return NextResponse.json({ error: "File too large (max 50MB)" }, { status: 400 })
-    }
-
-    // Upload file to Supabase Storage
-    const fileExt = file.name.split(".").pop()
-    const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExt}`
-    const filePath = `submissions/${session.user.id}/${fileName}`
-
-    const { error: uploadError, data: uploadData } = await supabase.storage.from("audio").upload(filePath, file, {
-      cacheControl: "3600",
-      upsert: false,
-    })
-
-    if (uploadError) {
-      return NextResponse.json({ error: `Error uploading file: ${uploadError.message}` }, { status: 500 })
-    }
-
-    // Get public URL for the uploaded file
+    const body = await request.json()
     const {
-      data: { publicUrl },
-    } = supabase.storage.from("audio").getPublicUrl(filePath)
+      track_title,
+      artist_name,
+      genre,
+      mood_tags,
+      description,
+      file_url,
+      file_size,
+      duration,
+      bpm,
+      key_signature,
+    } = body
 
-    // Parse mood tags
-    const parsedMoodTags = moodTags
-      ? moodTags
-          .split(",")
-          .map((tag) => tag.trim())
-          .filter(Boolean)
-      : []
+    if (!track_title || !artist_name) {
+      return NextResponse.json(
+        {
+          error: "Missing required fields",
+          message: "Track title and artist name are required",
+        },
+        { status: 400 },
+      )
+    }
 
-    // Create submission record in database
-    const { error: submissionError, data: submission } = await supabase
+    const supabase = await createClient()
+
+    // Create the submission
+    const { data: submission, error: submissionError } = await supabase
       .from("submissions")
       .insert({
-        user_id: session.user.id,
-        title,
-        artist,
+        user_id: user.id,
+        track_title,
+        artist_name,
         genre,
+        mood_tags,
         description,
-        mood_tags: parsedMoodTags,
-        file_url: publicUrl,
+        file_url,
+        file_size,
+        duration,
+        bpm,
+        key_signature,
         status: "pending",
+        credits_used: 1,
       })
       .select()
       .single()
 
     if (submissionError) {
-      return NextResponse.json({ error: `Error creating submission: ${submissionError.message}` }, { status: 500 })
+      console.error("Error creating submission:", submissionError)
+      return NextResponse.json(
+        {
+          error: "Failed to create submission",
+          details: submissionError.message,
+        },
+        { status: 500 },
+      )
     }
 
-    // Deduct credit from user if not pro tier
-    if (userData.tier !== "pro") {
+    // Deduct credits from user (unless master_dev)
+    if (user.role !== "master_dev") {
       const { error: creditError } = await supabase
         .from("users")
-        .update({ submission_credits: userData.submission_credits - 1 })
-        .eq("id", session.user.id)
+        .update({
+          submission_credits: Math.max(0, user.submission_credits - 1),
+        })
+        .eq("id", user.id)
 
       if (creditError) {
         console.error("Error updating credits:", creditError)
-        // Continue anyway, the submission is already created
+        // Don't fail the submission, just log the error
       }
     }
 
-    // Log activity
-    await supabase.from("activity").insert({
-      user_id: session.user.id,
-      activity_type: "submission",
-      description: `Submitted track: ${title}`,
+    return NextResponse.json({
+      success: true,
+      submission: {
+        ...submission,
+        title: submission.track_title, // Add title mapping for frontend
+      },
     })
-
-    return NextResponse.json({ success: true, submission })
-  } catch (error: any) {
-    console.error("Error creating submission:", error)
-    return NextResponse.json({ error: error.message || "Failed to create submission" }, { status: 500 })
+  } catch (error) {
+    console.error("Error in submission creation:", error)
+    return NextResponse.json(
+      {
+        error: "Internal server error",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 500 },
+    )
   }
 }

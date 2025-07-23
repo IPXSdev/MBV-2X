@@ -35,10 +35,22 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     const { data: submission, error } = await supabase
       .from("submissions")
       .select(`
-        *,
-        users!inner(name, email),
-        tracks!inner(title, artist, duration, file_url),
-        reviews(*)
+        id,
+        track_title,
+        artist_name,
+        genre,
+        mood_tags,
+        file_url,
+        file_size,
+        status,
+        admin_rating,
+        admin_feedback,
+        submitted_at,
+        updated_at,
+        credits_used,
+        description,
+        users:user_id (id, name, email, tier, submission_credits),
+        reviews (*)
       `)
       .eq("id", submissionId)
       .single()

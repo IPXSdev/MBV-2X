@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/supabase/auth"
-import { createServiceClient } from "@/lib/supabase/server"
+import { createClient } from "@/lib/supabase/server"
 
 export const dynamic = "force-dynamic"
 
@@ -12,45 +12,24 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const supabase = await createServiceClient()
+    const supabase = await createClient()
 
-    // Get recent submissions as activity
-    const { data: submissions, error: submissionsError } = await supabase
-      .from("submissions")
-      .select("id, title, status, created_at, updated_at")
+    // Get user activity
+    const { data: activities, error } = await supabase
+      .from("activity")
+      .select("*")
       .eq("user_id", user.id)
-      .order("updated_at", { ascending: false })
-      .limit(10)
+      .order("timestamp", { ascending: false })
+      .limit(20)
 
-    if (submissionsError) {
-      console.error("Error fetching submissions:", submissionsError)
+    if (error) {
+      console.error("Error fetching activity:", error)
+      return NextResponse.json({ error: "Failed to fetch activity" }, { status: 500 })
     }
 
-    // Transform submissions into activity format
-    const activity = (submissions || []).map((submission) => ({
-      id: submission.id,
-      type: "submission" as const,
-      title: `Track "${submission.title}" ${submission.status}`,
-      description: `Your submission has been ${submission.status.replace("_", " ")}`,
-      timestamp: submission.updated_at,
-      status: submission.status,
-    }))
-
-    // Add some sample achievements and upgrades for demo
-    if (user.tier !== "creator") {
-      activity.push({
-        id: "upgrade-" + user.id,
-        type: "upgrade" as const,
-        title: `Upgraded to ${user.tier} tier`,
-        description: `You now have access to ${user.tier} features and submission credits`,
-        timestamp: user.updated_at,
-        status: "completed",
-      })
-    }
-
-    return NextResponse.json({ activity })
+    return NextResponse.json({ activities: activities || [] })
   } catch (error) {
-    console.error("Activity API error:", error)
+    console.error("Error in activity route:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

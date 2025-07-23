@@ -1,63 +1,89 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { requireAdmin } from "@/lib/supabase/auth"
+import { getCurrentUser } from "@/lib/supabase/auth"
 import { createClient } from "@/lib/supabase/server"
 
 export const dynamic = "force-dynamic"
 
 export async function GET(request: NextRequest) {
   try {
-    await requireAdmin()
-    const supabase = await createClient()
+    const user = await getCurrentUser()
 
-    const { searchParams } = new URL(request.url)
+    if (!user || !["admin", "master_dev"].includes(user.role)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const searchParams = request.nextUrl.searchParams
     const status = searchParams.get("status")
-    const search = searchParams.get("search")
+    const filter = searchParams.get("filter") || "all" // all, ranked, unranked, my_ranked
     const page = Number.parseInt(searchParams.get("page") || "1")
-    const limit = Number.parseInt(searchParams.get("limit") || "10")
+    const limit = Number.parseInt(searchParams.get("limit") || "20")
     const offset = (page - 1) * limit
 
-    let query = supabase
-      .from("submissions")
-      .select(`
-        *,
-        users!inner(name, email),
-        tracks!inner(title, artist, duration, file_url)
-      `)
-      .order("created_at", { ascending: false })
+    const supabase = await createClient()
 
-    if (status && status !== "all") {
+    let query = supabase.from("submissions").select(
+      `
+        id,
+        title,
+        artist_name,
+        genre,
+        mood_tags,
+        file_url,
+        file_size,
+        status,
+        admin_rating,
+        admin_feedback,
+        submitted_at,
+        updated_at,
+        credits_used,
+        description,
+        users (
+          id,
+          name,
+          email,
+          tier
+        )
+      `,
+      { count: "exact" },
+    )
+
+    // Apply status filter if provided
+    if (status) {
       query = query.eq("status", status)
     }
 
-    if (search) {
-      query = query.or(`tracks.title.ilike.%${search}%,tracks.artist.ilike.%${search}%,users.name.ilike.%${search}%`)
+    // Apply ranking filter
+    if (filter === "ranked") {
+      query = query.not("admin_rating", "is", null)
+    } else if (filter === "unranked") {
+      query = query.is("admin_rating", null)
+    } else if (filter === "my_ranked") {
+      // This would require a join with a reviews table that tracks which admin reviewed which submission
+      // For now, we'll just return all ranked submissions
+      query = query.not("admin_rating", "is", null)
     }
 
-    const { data: submissions, error } = await query.range(offset, offset + limit - 1)
+    // Apply pagination
+    query = query.range(offset, offset + limit - 1).order("submitted_at", { ascending: false })
+
+    const { data: submissions, error, count } = await query
 
     if (error) {
       console.error("Error fetching submissions:", error)
       return NextResponse.json({ error: "Failed to fetch submissions" }, { status: 500 })
     }
 
-    // Get total count
-    let countQuery = supabase.from("submissions").select("id", { count: "exact", head: true })
-
-    if (status && status !== "all") {
-      countQuery = countQuery.eq("status", status)
-    }
-
-    const { count } = await countQuery
-
     return NextResponse.json({
       submissions: submissions || [],
-      total: count || 0,
-      page,
-      limit,
-      totalPages: Math.ceil((count || 0) / limit),
+      pagination: {
+        total: count || 0,
+        page,
+        limit,
+        totalPages: count ? Math.ceil(count / limit) : 0,
+      },
     })
   } catch (error) {
-    console.error("Admin submissions API error:", error)
+    console.error("Error in admin submissions route:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

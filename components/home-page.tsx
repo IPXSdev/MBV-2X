@@ -21,37 +21,32 @@ if (typeof window !== "undefined") {
   })
 }
 
-// Mock auth hook with error handling
-const useAuth = () => {
+export function HomePage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
 
   useEffect(() => {
-    try {
-      const session = localStorage.getItem("user-session")
-      setIsLoggedIn(!!session)
-    } catch (error) {
-      console.warn("localStorage access failed:", error)
-      setIsLoggedIn(false)
+    const checkAuth = async () => {
+      try {
+        const response = await fetch("/api/auth/me")
+        if (response.ok) {
+          setIsLoggedIn(true)
+        } else {
+          setIsLoggedIn(false)
+        }
+      } catch (error) {
+        console.error("Auth check failed:", error)
+        setIsLoggedIn(false)
+      }
     }
+
+    checkAuth()
   }, [])
 
-  return { isLoggedIn }
-}
-
-export function HomePage() {
-  const { isLoggedIn } = useAuth()
-
   const handleSubmitMusic = () => {
-    try {
-      if (!isLoggedIn) {
-        window.location.href = "/signup"
-        return
-      }
-      window.location.href = "/dashboard"
-    } catch (error) {
-      console.warn("Navigation error:", error)
-      // Fallback navigation
-      document.location.href = "/signup"
+    if (isLoggedIn) {
+      window.location.href = "/submissions"
+    } else {
+      window.location.href = "/signup"
     }
   }
 

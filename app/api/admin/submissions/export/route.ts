@@ -1,61 +1,87 @@
-import { NextResponse } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
 import { requireAdmin } from "@/lib/supabase/auth"
 import { createClient } from "@/lib/supabase/server"
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     await requireAdmin()
     const supabase = await createClient()
 
-    const { data: submissions, error } = await supabase
+    const { searchParams } = new URL(request.url)
+    const status = searchParams.get("status")
+    const search = searchParams.get("search")
+
+    // Build query
+    let query = supabase
       .from("submissions")
       .select(`
-        *,
-        users!inner(name, email),
-        tracks!inner(title, artist, duration, file_url)
+        id,
+        track_title,
+        artist_name,
+        genre,
+        mood_tags,
+        file_url,
+        file_size,
+        status,
+        admin_rating,
+        admin_feedback,
+        submitted_at,
+        updated_at,
+        users:user_id (name, email, tier)
       `)
-      .order("created_at", { ascending: false })
+      .order("submitted_at", { ascending: false })
+
+    if (status && status !== "all") {
+      query = query.eq("status", status)
+    }
+
+    if (search) {
+      query = query.or(`track_title.ilike.%${search}%,artist_name.ilike.%${search}%,users.name.ilike.%${search}%`)
+    }
+
+    const { data: submissions, error } = await query
 
     if (error) {
       console.error("Error fetching submissions for export:", error)
-      return NextResponse.json({ error: "Failed to fetch submissions" }, { status: 500 })
+      return NextResponse.json({ error: "Failed to export submissions" }, { status: 500 })
     }
 
-    // Create CSV content
-    const headers = [
-      "ID",
-      "Title",
-      "Artist",
-      "Status",
-      "Submitter Name",
-      "Submitter Email",
-      "Duration",
-      "Created At",
-      "Updated At",
-      "File URL",
-    ]
+    // Transform data for CSV
+    const csvData = submissions?.map((submission) => ({
+      ID: submission.id,
+      Title: submission.track_title,
+      Artist: submission.artist_name,
+      Genre: submission.genre,
+      "Mood Tags": submission.mood_tags?.join(", ") || "",
+      Status: submission.status,
+      Rating: submission.admin_rating || "",
+      "Submitted By": submission.users?.name || "",
+      Email: submission.users?.email || "",
+      "User Tier": submission.users?.tier || "",
+      "Submitted At": new Date(submission.submitted_at).toLocaleString(),
+      "Updated At": submission.updated_at ? new Date(submission.updated_at).toLocaleString() : "",
+      "File URL": submission.file_url,
+      "File Size (MB)": submission.file_size || "",
+    }))
 
+    // Convert to CSV
+    const headers = Object.keys(csvData?.[0] || {})
     const csvRows = [
       headers.join(","),
-      ...submissions.map((sub) =>
-        [
-          sub.id,
-          `"${sub.tracks.title}"`,
-          `"${sub.tracks.artist}"`,
-          sub.status,
-          `"${sub.users.name}"`,
-          sub.users.email,
-          sub.tracks.duration,
-          sub.created_at,
-          sub.updated_at,
-          sub.tracks.file_url,
-        ].join(","),
+      ...csvData.map((row) =>
+        headers
+          .map((header) => {
+            const value = row[header as keyof typeof row]
+            // Escape commas and quotes
+            return typeof value === "string" ? `"${value.replace(/"/g, '""')}"` : value
+          })
+          .join(","),
       ),
     ]
+    const csv = csvRows.join("\n")
 
-    const csvContent = csvRows.join("\n")
-
-    return new NextResponse(csvContent, {
+    // Return CSV file
+    return new NextResponse(csv, {
       headers: {
         "Content-Type": "text/csv",
         "Content-Disposition": `attachment; filename="submissions-export-${new Date().toISOString().split("T")[0]}.csv"`,
