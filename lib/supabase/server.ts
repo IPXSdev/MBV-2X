@@ -2,15 +2,12 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js"
 import { cookies } from "next/headers"
 import type { Database } from "./database.types"
 
-export function createClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
-  if (!supabaseUrl || !supabaseKey) {
-    throw new Error("Missing Supabase environment variables")
-  }
-
-  return createSupabaseClient<Database>(supabaseUrl, supabaseKey, {
+export async function createClient() {
+  return createSupabaseClient<Database>(supabaseUrl, supabaseServiceKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false,
@@ -18,14 +15,8 @@ export function createClient() {
   })
 }
 
-export function createClientWithAuth() {
+export function createServerClient() {
   const cookieStore = cookies()
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error("Missing Supabase environment variables")
-  }
 
   return createSupabaseClient<Database>(supabaseUrl, supabaseAnonKey, {
     cookies: {
@@ -36,92 +27,87 @@ export function createClientWithAuth() {
         try {
           cookieStore.set({ name, value, ...options })
         } catch (error) {
-          // Handle cookie setting errors in server components
+          // The `set` method was called from a Server Component.
+          // This can be ignored if you have middleware refreshing
+          // user sessions.
         }
       },
       remove(name: string, options: any) {
         try {
           cookieStore.set({ name, value: "", ...options })
         } catch (error) {
-          // Handle cookie removal errors in server components
+          // The `delete` method was called from a Server Component.
+          // This can be ignored if you have middleware refreshing
+          // user sessions.
         }
       },
     },
   })
 }
 
-export async function getUser() {
-  const supabase = createClientWithAuth()
+export function createServiceClient() {
+  return createSupabaseClient<Database>(supabaseUrl, supabaseServiceKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  })
+}
+
+export function createAdminClient() {
+  return createSupabaseClient<Database>(supabaseUrl, supabaseServiceKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  })
+}
+
+// Helper function to get user from session token
+export async function getUserFromSession(sessionToken: string) {
+  const supabase = createServiceClient()
 
   try {
-    const {
-      data: { user },
-      error,
-    } = await supabase.auth.getUser()
+    const { data: sessionData, error: sessionError } = await supabase
+      .from("user_sessions")
+      .select(`
+        user_id,
+        expires_at,
+        users (
+          id,
+          email,
+          name,
+          role,
+          tier,
+          submission_credits,
+          is_verified,
+          legal_waiver_accepted,
+          compensation_type,
+          created_at,
+          updated_at
+        )
+      `)
+      .eq("session_token", sessionToken)
+      .single()
 
-    if (error) {
-      console.error("Error getting user:", error)
+    if (sessionError || !sessionData || !sessionData.users) {
       return null
     }
 
+    // Check if session is expired
+    const expiresAt = new Date(sessionData.expires_at)
+    const now = new Date()
+
+    if (expiresAt < now) {
+      // Clean up expired session
+      await supabase.from("user_sessions").delete().eq("session_token", sessionToken)
+      return null
+    }
+
+    const user = Array.isArray(sessionData.users) ? sessionData.users[0] : sessionData.users
     return user
   } catch (error) {
-    console.error("Error in getUser:", error)
-    return null
-  }
-}
-
-export async function getSession() {
-  const supabase = createClientWithAuth()
-
-  try {
-    const {
-      data: { session },
-      error,
-    } = await supabase.auth.getSession()
-
-    if (error) {
-      console.error("Error getting session:", error)
-      return null
-    }
-
-    return session
-  } catch (error) {
-    console.error("Error in getSession:", error)
-    return null
-  }
-}
-
-export async function signOut() {
-  const supabase = createClientWithAuth()
-
-  try {
-    const { error } = await supabase.auth.signOut()
-
-    if (error) {
-      console.error("Error signing out:", error)
-      throw error
-    }
-  } catch (error) {
-    console.error("Error in signOut:", error)
-    throw error
-  }
-}
-
-export async function refreshSession() {
-  const supabase = createClientWithAuth()
-
-  try {
-    const { data, error } = await supabase.auth.refreshSession()
-
-    if (error) {
-      console.error("Error refreshing session:", error)
-      return null
-    }
-
-    return data.session
-  } catch (error) {
-    console.error("Error in refreshSession:", error)
+    console.error("Error getting user from session:", error)
     return null
   }
 }
