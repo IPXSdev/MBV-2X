@@ -1,258 +1,153 @@
 "use client"
 
-import type React from "react"
 import { useState } from "react"
 import { loadStripe } from "@stripe/stripe-js"
 import { Elements } from "@stripe/react-stripe-js"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { CheckCircle2 } from "lucide-react"
 import { useAuth } from "@/components/auth/auth-provider"
 import { useRouter } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
-import { CheckIcon, Loader2 } from "lucide-react"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 
-interface AuthModalProps {
-  isOpen: boolean
-  onClose: () => void
-  selectedPlan?: string
-}
-
-function AuthModal({ isOpen, onClose, selectedPlan }: AuthModalProps) {
-  const [isLogin, setIsLogin] = useState(true)
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [loading, setLoading] = useState(false)
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-
-    try {
-      const endpoint = isLogin ? "/api/auth/login" : "/api/auth/signup"
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      })
-
-      if (response.ok) {
-        window.location.reload()
-      } else {
-        console.error("Authentication failed")
-      }
-    } catch (error) {
-      console.error("Authentication error:", error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md bg-gray-900 border-gray-700 text-white">
-        <DialogHeader>
-          <DialogTitle className="text-center text-xl font-bold">{isLogin ? "Sign In" : "Create Account"}</DialogTitle>
-          <DialogDescription className="text-center text-gray-400">
-            {selectedPlan && `Continue with ${selectedPlan} plan`}
-          </DialogDescription>
-        </DialogHeader>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="bg-gray-800 border-gray-600 text-white"
-              required
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="bg-gray-800 border-gray-600 text-white"
-              required
-            />
-          </div>
-
-          <Button
-            type="submit"
-            className="w-full bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600"
-            disabled={loading}
-          >
-            {loading ? "Please wait..." : isLogin ? "Sign In" : "Create Account"}
-          </Button>
-        </form>
-
-        <div className="text-center">
-          <button onClick={() => setIsLogin(!isLogin)} className="text-sm text-blue-400 hover:text-blue-300">
-            {isLogin ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
-          </button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// Initialize Stripe outside of the component render to avoid re-creating the Stripe object on every render.
+// Initialize Stripe outside of the component to prevent re-creation on re-renders
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!)
 
 const tiers = [
   {
-    name: "Creator",
+    name: "Free",
     price: "$0",
-    description: "Get started and explore the platform.",
-    features: ["View podcast clips", "See BTS previews", "Read placement announcements"],
-    priceId: null,
-    tierKey: "free",
-  },
-  {
-    name: "Indie",
-    price: "$19.99",
-    priceSuffix: "/ month",
-    description: "For artists ready to get heard.",
-    features: [
-      "1 song submission/mo",
-      "Extended BTS access",
-      "Music presented to A&Rs",
-      "Reviewed in podcast breakdowns",
-    ],
-    priceId: "price_1PfA6qRxH3a7y9z8abcd1234", // Replace with your actual Stripe Price ID
-    tierKey: "indie",
+    priceId: null, // No checkout for free tier
+    description: "For artists just starting out.",
+    features: ["1 Submission Credit", "Basic Placement Matching", "Community Access"],
   },
   {
     name: "Pro",
-    price: "$24.99",
-    priceSuffix: "/ month",
-    description: "For serious creators seeking maximum exposure.",
-    features: [
-      "2 song submissions/mo",
-      "Full BTS & podcast access",
-      "Weekly DJ sets inclusion",
-      "Featured in live mixes",
-    ],
-    priceId: "price_1PfA6qRxH3a7y9z8efgh5678", // Replace with your actual Stripe Price ID
-    tierKey: "pro",
+    price: "$29",
+    priceId: "price_1PjC9sRxH9A0g9F8fG3h4iJk", // Replace with your actual Stripe Price ID
+    description: "For dedicated artists ready to level up.",
+    features: ["10 Submission Credits", "Priority Placement Matching", "Direct A&R Feedback", "Analytics Dashboard"],
+    highlight: true,
+  },
+  {
+    name: "Enterprise",
+    price: "Custom",
+    priceId: null, // Contact for enterprise
+    description: "For labels, managers, and teams.",
+    features: ["Unlimited Submissions", "Dedicated A&R Manager", "Team Accounts", "Custom Integrations"],
   },
 ]
 
-function PricingContent() {
+export default function PricingPage() {
   const { user, loading: authLoading } = useAuth()
   const router = useRouter()
-  const [isLoading, setIsLoading] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
 
   const handleCheckout = async (priceId: string) => {
     if (!user) {
       router.push("/login?redirect=/pricing")
       return
     }
-    setIsLoading(priceId)
+
+    setLoading(true)
     try {
       const response = await fetch("/api/stripe/create-checkout", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ priceId, userId: user.id, email: user.email }),
+        body: JSON.stringify({ priceId, userId: user.id, userEmail: user.email }),
       })
 
       if (!response.ok) {
-        throw new Error("Failed to create checkout session")
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to create checkout session.")
       }
 
       const { sessionId } = await response.json()
+      if (!sessionId) {
+        throw new Error("Could not retrieve checkout session ID.")
+      }
+
       const stripe = await stripePromise
       if (stripe) {
-        await stripe.redirectToCheckout({ sessionId })
+        const { error } = await stripe.redirectToCheckout({ sessionId })
+        if (error) {
+          console.error("Stripe redirection error:", error)
+          alert(error.message)
+        }
       }
     } catch (error) {
-      console.error("Stripe checkout error:", error)
-      // Add user-facing error message here
+      console.error("Checkout error:", error)
+      const message = error instanceof Error ? error.message : "An unknown error occurred."
+      alert(`An error occurred during checkout: ${message}`)
     } finally {
-      setIsLoading(null)
+      setLoading(false)
     }
   }
 
-  if (authLoading) {
-    return (
-      <div className="flex justify-center items-center min-h-[60vh]">
-        <Loader2 className="w-12 h-12 animate-spin text-purple-400" />
-      </div>
-    )
-  }
-
-  return (
-    <div className="bg-slate-900 text-white min-h-screen p-4 sm:p-8">
-      <div className="text-center mb-12">
-        <h1 className="text-4xl sm:text-5xl font-bold tracking-tight">Find Your Perfect Plan</h1>
-        <p className="text-gray-400 mt-4 text-lg max-w-2xl mx-auto">
-          Join a community of creators and get your music in front of industry legends.
-        </p>
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 max-w-7xl mx-auto">
-        {tiers.map((tier) => (
-          <Card
-            key={tier.name}
-            className={`bg-black/40 backdrop-blur-md border flex flex-col ${
-              user?.tier === tier.tierKey ? "border-purple-500 shadow-purple-500/20 shadow-lg" : "border-white/10"
-            }`}
-          >
-            <CardHeader className="text-center">
-              <CardTitle className="text-3xl font-bold">{tier.name}</CardTitle>
-              <div className="text-4xl font-extrabold mt-4">
-                {tier.price}
-                <span className="text-lg font-normal text-gray-400">{tier.priceSuffix}</span>
-              </div>
-              <CardDescription className="text-gray-300 h-10 mt-2">{tier.description}</CardDescription>
-            </CardHeader>
-            <CardContent className="flex-grow py-6">
-              <ul className="space-y-4">
-                {tier.features.map((feature) => (
-                  <li key={feature} className="flex items-start">
-                    <CheckIcon className="w-5 h-5 text-green-400 mr-3 flex-shrink-0 mt-1" />
-                    <span>{feature}</span>
-                  </li>
-                ))}
-              </ul>
-            </CardContent>
-            <CardFooter>
-              {user?.tier === tier.tierKey ? (
-                <Button
-                  disabled
-                  className="w-full bg-purple-600 text-white font-semibold h-12 rounded-lg transition-all duration-200"
-                >
-                  Current Plan
-                </Button>
-              ) : (
-                <Button
-                  onClick={() => tier.priceId && handleCheckout(tier.priceId)}
-                  disabled={!tier.priceId || !!isLoading}
-                  className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold h-12 rounded-lg transition-all duration-200"
-                >
-                  {isLoading === tier.priceId ? <Loader2 className="w-5 h-5 animate-spin" /> : `Choose ${tier.name}`}
-                </Button>
-              )}
-            </CardFooter>
-          </Card>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-export default function PricingPageWrapper() {
   return (
     <Elements stripe={stripePromise}>
-      <PricingContent />
+      <div className="min-h-screen bg-gradient-to-b from-slate-900 to-black text-white">
+        <div className="container mx-auto px-4 py-16">
+          <div className="text-center mb-12">
+            <h1 className="text-5xl font-bold tracking-tight">Find Your Perfect Plan</h1>
+            <p className="mt-4 text-lg text-gray-400 max-w-2xl mx-auto">
+              Unlock your potential with a plan that fits your needs. From your first submission to managing a roster of
+              artists, we've got you covered.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+            {tiers.map((tier) => (
+              <Card
+                key={tier.name}
+                className={`flex flex-col bg-black/40 backdrop-blur-md border-white/10 shadow-2xl ${
+                  tier.highlight ? "border-purple-500 scale-105" : ""
+                }`}
+              >
+                <CardHeader>
+                  <CardTitle className="text-3xl font-semibold">{tier.name}</CardTitle>
+                  <CardDescription className="text-gray-300 h-10">{tier.description}</CardDescription>
+                </CardHeader>
+                <CardContent className="flex-grow">
+                  <div className="mb-6">
+                    <span className="text-5xl font-bold">{tier.price}</span>
+                    {tier.name !== "Free" && tier.name !== "Enterprise" && (
+                      <span className="text-gray-400">/month</span>
+                    )}
+                  </div>
+                  <ul className="space-y-3">
+                    {tier.features.map((feature) => (
+                      <li key={feature} className="flex items-center">
+                        <CheckCircle2 className="w-5 h-5 text-purple-400 mr-2" />
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+                <CardFooter>
+                  {tier.priceId ? (
+                    <Button
+                      onClick={() => handleCheckout(tier.priceId!)}
+                      disabled={loading || authLoading}
+                      className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold h-12 rounded-lg transition-all duration-200"
+                    >
+                      {loading ? "Processing..." : "Get Started"}
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={() => router.push(tier.name === "Free" ? "/signup" : "/contact")}
+                      className="w-full bg-gray-700 hover:bg-gray-600 text-white font-semibold h-12 rounded-lg"
+                    >
+                      {tier.name === "Enterprise" ? "Contact Sales" : "Sign Up for Free"}
+                    </Button>
+                  )}
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </div>
     </Elements>
   )
 }

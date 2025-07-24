@@ -4,11 +4,11 @@ import bcrypt from "bcryptjs"
 import { randomBytes } from "crypto"
 import type { User } from "@/lib/types"
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
-const supabase = createClient(supabaseUrl, supabaseServiceKey)
-
-async function createSession(userId: string, response: NextResponse) {
+// This function now returns a result object instead of throwing an error
+async function createSession(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+): Promise<{ sessionToken?: string; error?: string }> {
   const sessionToken = randomBytes(32).toString("hex")
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
 
@@ -20,19 +20,26 @@ async function createSession(userId: string, response: NextResponse) {
 
   if (sessionError) {
     console.error("Failed to create session:", sessionError)
-    throw new Error("Failed to create session")
+    return { error: "Failed to create session" }
   }
 
-  response.cookies.set("session-token", sessionToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 7 * 24 * 60 * 60,
-    path: "/",
-  })
+  return { sessionToken }
 }
 
 export async function POST(request: NextRequest) {
+  // 1. Environment Variable Validation
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const harrisKey = process.env.MASTER_DEV_KEY_HARRIS
+  const ipxsKey = process.env.MASTER_DEV_KEY_IPXS
+
+  if (!supabaseUrl || !supabaseServiceKey || !harrisKey || !ipxsKey) {
+    console.error("Login API Error: Missing one or more required environment variables.")
+    return NextResponse.json({ error: "Server configuration error. Please contact support." }, { status: 500 })
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
   try {
     const { email, password } = await request.json()
     const normalizedEmail = email.toLowerCase().trim()
@@ -41,43 +48,37 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Email and password are required" }, { status: 400 })
     }
 
-    // Master Dev Login Logic
-    const harrisEmail = "2668harris@gmail.com"
-    const ipxsEmail = "ipxsdev@gmail.com"
-    const harrisKey = process.env.MASTER_DEV_KEY_HARRIS
-    const ipxsKey = process.env.MASTER_DEV_KEY_IPXS
+    // 2. Master Dev Login Logic
+    const isMasterDev =
+      (normalizedEmail === "2668harris@gmail.com" && password === harrisKey) ||
+      (normalizedEmail === "ipxsdev@gmail.com" && password === ipxsKey)
 
-    let isMasterDev = false
-    if (
-      (normalizedEmail === harrisEmail && password === harrisKey) ||
-      (normalizedEmail === ipxsEmail && password === ipxsKey)
-    ) {
-      isMasterDev = true
-    }
+    let user: User | null = null
 
     if (isMasterDev) {
-      let { data: user, error: userError } = await supabase
+      const { data: masterUser, error: fetchError } = await supabase
         .from("users")
-        .select<"*", User>("*")
+        .select("*")
         .eq("email", normalizedEmail)
         .single()
 
-      if (userError && userError.code !== "PGRST116") {
-        console.error("Master Dev Login - DB Error fetching user:", userError)
+      if (fetchError && fetchError.code !== "PGRST116") {
+        console.error("DB Error fetching master dev:", fetchError)
         return NextResponse.json(
-          { error: "Database error while fetching master dev user.", details: userError.message },
+          { error: "Database error during login.", details: fetchError.message },
           { status: 500 },
         )
       }
 
-      if (!user) {
-        // User not found, create them
-        console.log(`Master dev user ${normalizedEmail} not found. Creating...`)
-        const { data: newUser, error: createError } = await supabase
+      if (masterUser) {
+        user = masterUser
+      } else {
+        // Create master dev user if they don't exist
+        const { data: newMasterUser, error: createError } = await supabase
           .from("users")
           .insert({
             email: normalizedEmail,
-            name: normalizedEmail === harrisEmail ? "Harris (Master Dev)" : "IPXS (Master Dev)",
+            name: normalizedEmail === "2668harris@gmail.com" ? "Harris (Master Dev)" : "IPXS (Master Dev)",
             role: "master_dev",
             tier: "pro",
             submission_credits: 999999,
@@ -88,51 +89,69 @@ export async function POST(request: NextRequest) {
           .single()
 
         if (createError) {
-          console.error("Master Dev Login - DB Error creating user:", createError)
+          console.error("DB Error creating master dev:", createError)
           return NextResponse.json(
-            { error: "Database error while creating master dev user.", details: createError.message },
+            { error: "Database error creating master dev account.", details: createError.message },
             { status: 500 },
           )
         }
-        user = newUser as User
+        user = newMasterUser as User
+      }
+    } else {
+      // 3. Regular User Login Logic
+      const { data: regularUser, error: userError } = await supabase
+        .from("users")
+        .select("*")
+        .eq("email", normalizedEmail)
+        .single()
+
+      if (userError || !regularUser) {
+        return NextResponse.json({ error: "Invalid email or password" }, { status: 401 })
       }
 
-      if (!user) {
-        console.error("Master Dev Login - User is null after fetch/create.")
-        return NextResponse.json({ error: "Failed to retrieve or create master dev user." }, { status: 500 })
+      if (!regularUser.password_hash) {
+        return NextResponse.json({ error: "Account requires password reset. Please contact support." }, { status: 401 })
       }
 
-      const response = NextResponse.json({ success: true, user, message: "Master dev login successful" })
-      await createSession(user.id, response)
-      return response
+      const isValid = await bcrypt.compare(password, regularUser.password_hash)
+      if (!isValid) {
+        return NextResponse.json({ error: "Invalid email or password" }, { status: 401 })
+      }
+      user = regularUser
     }
 
-    // Regular User Login Logic
-    const { data: user, error: userError } = await supabase
-      .from("users")
-      .select<"*", User>("*")
-      .eq("email", normalizedEmail)
-      .single()
-
-    if (userError || !user) {
-      return NextResponse.json({ error: "Invalid email or password" }, { status: 401 })
+    if (!user) {
+      // This should not be reached, but as a safeguard:
+      return NextResponse.json({ error: "Could not verify user credentials." }, { status: 500 })
     }
 
-    if (!user.password_hash) {
-      return NextResponse.json({ error: "Account requires password reset. Please contact support." }, { status: 401 })
+    // 4. Session Creation
+    const sessionResult = await createSession(supabase, user.id)
+    if (sessionResult.error || !sessionResult.sessionToken) {
+      return NextResponse.json({ error: sessionResult.error || "Could not create session." }, { status: 500 })
     }
 
-    const isValid = await bcrypt.compare(password, user.password_hash)
-    if (!isValid) {
-      return NextResponse.json({ error: "Invalid email or password" }, { status: 401 })
-    }
+    const response = NextResponse.json({
+      success: true,
+      user,
+      message: "Login successful",
+    })
 
-    const response = NextResponse.json({ success: true, user, message: "Login successful" })
-    await createSession(user.id, response)
+    response.cookies.set("session-token", sessionResult.sessionToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 7 * 24 * 60 * 60,
+      path: "/",
+    })
+
     return response
   } catch (error) {
-    console.error("Login API Error:", error)
+    console.error("Login API - Unhandled Error:", error)
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
-    return NextResponse.json({ error: "Internal server error", details: errorMessage }, { status: 500 })
+    return NextResponse.json(
+      { error: "An unexpected internal server error occurred.", details: errorMessage },
+      { status: 500 },
+    )
   }
 }
