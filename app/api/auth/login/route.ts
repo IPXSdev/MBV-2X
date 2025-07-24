@@ -62,9 +62,9 @@ export async function POST(request: NextRequest) {
     if (isMasterDev) {
       console.log("🔑 Master dev login attempt")
 
-      // Check for master dev credentials
+      // Check for master dev credentials - using server-side environment variables only
       if (email.toLowerCase() === "harris@tmbm.dev" || email.toLowerCase() === "2668harris@gmail.com") {
-        const masterDevKey = process.env.NEXT_PUBLIC_MASTER_DEV_KEY_HARRIS || "123456789"
+        const masterDevKey = process.env.MASTER_DEV_KEY_HARRIS || "123456789"
         if (password === masterDevKey) {
           console.log("✅ Master dev authentication successful")
           isValidPassword = true
