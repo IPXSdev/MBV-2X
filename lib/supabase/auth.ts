@@ -13,7 +13,7 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey, {
 
 export async function getCurrentUser() {
   try {
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
     const sessionToken = cookieStore.get("session-token")?.value
 
     if (!sessionToken) {
@@ -76,6 +76,34 @@ export async function requireAuth() {
 
   if (!user) {
     throw new Error("Authentication required")
+  }
+
+  return user
+}
+
+export async function requireAdmin() {
+  const user = await getCurrentUser()
+
+  if (!user) {
+    throw new Error("Authentication required")
+  }
+
+  if (user.role !== "admin" && user.role !== "master_dev") {
+    throw new Error("Admin access required")
+  }
+
+  return user
+}
+
+export async function requireMasterDev() {
+  const user = await getCurrentUser()
+
+  if (!user) {
+    throw new Error("Authentication required")
+  }
+
+  if (user.role !== "master_dev") {
+    throw new Error("Master dev access required")
   }
 
   return user
