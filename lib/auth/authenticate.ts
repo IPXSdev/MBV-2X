@@ -15,7 +15,6 @@ export async function authenticateUser(credentials: LoginData): Promise<AuthResu
   try {
     const { email, password } = credentials
 
-    // Validate input
     const emailValidation = validateEmail(email)
     if (!emailValidation.valid) {
       return { success: false, error: emailValidation.error }
@@ -28,13 +27,11 @@ export async function authenticateUser(credentials: LoginData): Promise<AuthResu
 
     const normalizedEmail = email.toLowerCase().trim()
 
-    // Check for master dev authentication
     const masterDevResult = await authenticateMasterDev(normalizedEmail, password)
-    if (masterDevResult) {
+    if (masterDevResult !== null) {
       return masterDevResult
     }
 
-    // Regular user authentication
     const user = await getUserByEmail(normalizedEmail)
     if (!user) {
       return { success: false, error: "Invalid email or password" }
@@ -42,8 +39,6 @@ export async function authenticateUser(credentials: LoginData): Promise<AuthResu
 
     const passwordHash = await getUserPasswordHash(normalizedEmail)
     if (!passwordHash) {
-      // This case could mean a user was created without a password, e.g., via admin.
-      // Or it's an old account. For security, deny login.
       return { success: false, error: "Invalid email or password" }
     }
 
@@ -52,7 +47,6 @@ export async function authenticateUser(credentials: LoginData): Promise<AuthResu
       return { success: false, error: "Invalid email or password" }
     }
 
-    // Create session
     const sessionToken = generateSessionToken()
     await createUserSession(user.id, sessionToken)
 
@@ -64,7 +58,7 @@ export async function authenticateUser(credentials: LoginData): Promise<AuthResu
     }
   } catch (error) {
     console.error("❌ Authentication error:", error)
-    return { success: false, error: "Authentication failed" }
+    return { success: false, error: "Authentication failed due to a server error." }
   }
 }
 
@@ -72,7 +66,6 @@ export async function registerUser(userData: CreateUserData): Promise<AuthResult
   try {
     const { email, password, name } = userData
 
-    // Validate input
     const emailValidation = validateEmail(email)
     if (!emailValidation.valid) {
       return { success: false, error: emailValidation.error }
@@ -89,22 +82,23 @@ export async function registerUser(userData: CreateUserData): Promise<AuthResult
 
     const normalizedEmail = email.toLowerCase().trim()
 
-    // Check if user already exists
     const existingUser = await getUserByEmail(normalizedEmail)
     if (existingUser) {
       return { success: false, error: "An account with this email already exists" }
     }
 
-    // Hash password and create user
     const passwordHash = await hashPassword(password)
     const user = await createUser({
       email: normalizedEmail,
       name: name.trim(),
-      password, // password is not stored, but passed for type compatibility
+      password,
       passwordHash,
     })
 
-    // Create session
+    if (!user) {
+      throw new Error("Failed to create user account during registration.")
+    }
+
     const sessionToken = generateSessionToken()
     await createUserSession(user.id, sessionToken)
 
@@ -116,38 +110,37 @@ export async function registerUser(userData: CreateUserData): Promise<AuthResult
     }
   } catch (error) {
     console.error("❌ Registration error:", error)
-    return { success: false, error: "Registration failed" }
+    return { success: false, error: "Registration failed due to a server error." }
   }
 }
 
 async function authenticateMasterDev(email: string, password: string): Promise<AuthResult | null> {
   try {
-    // Check if this is a master dev email
     const masterDev = Object.values(MASTER_DEV_CREDENTIALS).find((cred) => cred.email === email)
-    if (!masterDev || !masterDev.key) {
+    if (!masterDev) {
       return null
     }
 
-    // Verify master dev key
     if (password !== masterDev.key) {
-      return null
+      return { success: false, error: "Invalid master key" }
     }
 
-    // Get or create master dev user
     let user: User | null = await getUserByEmail(email)
 
     if (!user) {
-      // Create new master dev user
-      const passwordHash = await hashPassword(password) // Hash the key for storage
-      user = await createUser({
+      const passwordHash = await hashPassword(password)
+      const newUser = await createUser({
         email,
         name: email.startsWith("harris") || email.startsWith("2668") ? "Harris" : "IPXS",
         password,
         passwordHash,
       })
+      if (!newUser) {
+        throw new Error("Failed to create master dev user account.")
+      }
+      user = newUser
     }
 
-    // Ensure user has master_dev role and pro tier
     if (user.role !== "master_dev") {
       await updateUserRole(user.id, "master_dev")
       user.role = "master_dev"
@@ -159,7 +152,6 @@ async function authenticateMasterDev(email: string, password: string): Promise<A
       user.submission_credits = 999999
     }
 
-    // Create session
     const sessionToken = generateSessionToken()
     await createUserSession(user.id, sessionToken)
 
@@ -171,7 +163,7 @@ async function authenticateMasterDev(email: string, password: string): Promise<A
     }
   } catch (error) {
     console.error("❌ Master dev authentication error:", error)
-    return null
+    return { success: false, error: "Master dev authentication failed due to a server error." }
   }
 }
 
