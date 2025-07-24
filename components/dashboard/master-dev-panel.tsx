@@ -29,7 +29,7 @@ export function MasterDevPanel({ user }: MasterDevPanelProps) {
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState(false)
 
-  const isMasterDev = user.role === "master_dev" && (user.email.includes("2668") || user.email.includes("ipxs"))
+  const isMasterDev = user.role === "master_dev"
 
   useEffect(() => {
     if (isMasterDev) {
@@ -87,7 +87,7 @@ export function MasterDevPanel({ user }: MasterDevPanelProps) {
         <div className="flex items-center space-x-2">
           <Shield className="h-6 w-6 text-white" />
           <h2 className="text-xl font-bold text-white">Master Dev Panel</h2>
-          <span className="bg-purple-500 text-white text-xs px-3 py-1 rounded-full">HARRIS</span>
+          <span className="bg-yellow-500 text-black text-xs font-bold px-3 py-1 rounded-full">MASTER</span>
         </div>
         <Button
           variant="ghost"

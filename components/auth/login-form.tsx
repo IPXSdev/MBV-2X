@@ -42,11 +42,6 @@ export function LoginForm() {
     }
   }
 
-  const fillMasterDevCredentials = () => {
-    setEmail("harris@tmbm.com")
-    setPassword(process.env.NEXT_PUBLIC_MASTER_DEV_KEY_HARRIS || "")
-  }
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
       <div className="w-full max-w-lg space-y-8">
@@ -54,7 +49,10 @@ export function LoginForm() {
         <div className="flex justify-center">
           <div className="relative w-80 h-80 rounded-xl overflow-hidden bg-black/20 backdrop-blur-sm border border-white/10 shadow-2xl">
             <video autoPlay loop muted playsInline className="w-full h-full object-cover">
-              <source src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/Welcome%20back%20%3A%20login%20visual-YnNO9wO2szXBs3Cv76kMVli0LsOcik.mp4" type="video/mp4" />
+              <source
+                src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/Welcome%20back%20%3A%20login%20visual-YnNO9wO2szXBs3Cv76kMVli0LsOcik.mp4"
+                type="video/mp4"
+              />
             </video>
             {/* Subtle overlay for better visual depth */}
             <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent pointer-events-none" />
@@ -170,15 +168,6 @@ export function LoginForm() {
                     Reset here
                   </Link>
                 </p>
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full bg-transparent border-white/20 text-gray-300 hover:bg-white/10 mt-3"
-                  onClick={fillMasterDevCredentials}
-                >
-                  Fill Master Dev Credentials
-                </Button>
               </div>
             </div>
           </CardContent>

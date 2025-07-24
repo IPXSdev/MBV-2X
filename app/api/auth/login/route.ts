@@ -41,51 +41,54 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Email and password are required" }, { status: 400 })
     }
 
-    // Master Dev Login
-    const masterDevEmails = ["harris@tmbm.dev", "ipxs@tmbm.dev", "2668harris@gmail.com"]
-    if (masterDevEmails.includes(normalizedEmail)) {
-      const harrisKey = process.env.MASTER_DEV_KEY_HARRIS
-      const ipxsKey = process.env.MASTER_DEV_KEY_IPXS
+    // Master Dev Login Logic
+    const harrisEmail = "2668harris@gmail.com"
+    const ipxsEmail = "ipxsdev@gmail.com"
+    const harrisKey = process.env.MASTER_DEV_KEY_HARRIS
+    const ipxsKey = process.env.MASTER_DEV_KEY_IPXS
 
-      const isHarris =
-        (normalizedEmail === "harris@tmbm.dev" || normalizedEmail === "2668harris@gmail.com") && password === harrisKey
-      const isIpxs = normalizedEmail === "ipxs@tmbm.dev" && password === ipxsKey
-
-      if (isHarris || isIpxs) {
-        let { data: user, error: userError } = await supabase
-          .from("users")
-          .select<"*", User>("*")
-          .eq("email", normalizedEmail)
-          .single()
-
-        if (userError && userError.code === "PGRST116") {
-          // User not found, create them with master_dev role
-          const { data: newUser, error: createError } = await supabase
-            .from("users")
-            .insert({
-              email: normalizedEmail,
-              name: isHarris ? "Harris" : "IPXS",
-              role: "master_dev",
-              tier: "pro",
-              submission_credits: 999999,
-              is_verified: true,
-            })
-            .select()
-            .single()
-
-          if (createError) throw createError
-          user = newUser as User
-        } else if (userError) {
-          throw userError
-        }
-
-        const response = NextResponse.json({ success: true, user, message: "Master dev login successful" })
-        await createSession(user!.id, response)
-        return response
-      }
+    let isMasterDev = false
+    if (normalizedEmail === harrisEmail && password === harrisKey) {
+      isMasterDev = true
+    } else if (normalizedEmail === ipxsEmail && password === ipxsKey) {
+      isMasterDev = true
     }
 
-    // Regular User Login
+    if (isMasterDev) {
+      let { data: user, error: userError } = await supabase
+        .from("users")
+        .select<"*", User>("*")
+        .eq("email", normalizedEmail)
+        .single()
+
+      // If master dev user doesn't exist in DB, create them.
+      if (userError && userError.code === "PGRST116") {
+        const { data: newUser, error: createError } = await supabase
+          .from("users")
+          .insert({
+            email: normalizedEmail,
+            name: normalizedEmail === harrisEmail ? "Harris (Master Dev)" : "IPXS (Master Dev)",
+            role: "master_dev",
+            tier: "pro",
+            submission_credits: 999999,
+            is_verified: true,
+            legal_waiver_accepted: true,
+          })
+          .select()
+          .single()
+
+        if (createError) throw createError
+        user = newUser as User
+      } else if (userError) {
+        throw userError
+      }
+
+      const response = NextResponse.json({ success: true, user, message: "Master dev login successful" })
+      await createSession(user!.id, response)
+      return response
+    }
+
+    // Regular User Login Logic
     const { data: user, error: userError } = await supabase
       .from("users")
       .select<"*", User>("*")
@@ -97,7 +100,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!user.password_hash) {
-      return NextResponse.json({ error: "Account requires password reset" }, { status: 401 })
+      return NextResponse.json({ error: "Account requires password reset. Please contact support." }, { status: 401 })
     }
 
     const isValid = await bcrypt.compare(password, user.password_hash)
