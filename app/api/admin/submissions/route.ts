@@ -1,89 +1,67 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { getCurrentUser } from "@/lib/auth/session"
-import { createServiceClient } from "@/lib/supabase/server"
+import { NextResponse } from 'next/server'
+import { requireAdmin } from '@/lib/supabase/auth'
+import { createServiceClient } from '@/lib/supabase/server'
 
-export const dynamic = "force-dynamic"
+export const dynamic = 'force-dynamic'
 
-export async function GET(request: NextRequest) {
+export async function GET(request: Request) {
   try {
-    const user = await getCurrentUser()
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    if (user.role !== "admin" && user.role !== "master_dev") {
-      return NextResponse.json({ error: "Forbidden - Admin access required" }, { status: 403 })
-    }
-
-    const supabase = await createServiceClient()
-
+    await requireAdmin()
+    
     const { searchParams } = new URL(request.url)
-    const status = searchParams.get("status")
-    const limit = Number.parseInt(searchParams.get("limit") || "50")
-    const offset = Number.parseInt(searchParams.get("offset") || "0")
-
+    const page = parseInt(searchParams.get('page') || '1')
+    const limit = parseInt(searchParams.get('limit') || '10')
+    const status = searchParams.get('status')
+    const search = searchParams.get('search')
+    
+    const supabase = createServiceClient()
+    
     let query = supabase
-      .from("submissions")
+      .from('submissions')
       .select(`
         *,
-        users:user_id (
+        users (
           id,
           name,
           email,
           tier
         )
       `)
-      .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1)
-
-    if (status && status !== "all") {
-      query = query.eq("status", status)
+      .order('created_at', { ascending: false })
+    
+    // Apply filters
+    if (status && status !== 'all') {
+      query = query.eq('status', status)
     }
-
-    const { data: submissions, error: submissionsError } = await query
-
-    if (submissionsError) {
-      console.error("Error fetching submissions:", submissionsError)
-      return NextResponse.json(
-        {
-          error: "Failed to fetch submissions",
-          details: submissionsError.message,
-        },
-        { status: 500 }
-      )
+    
+    if (search) {
+      query = query.or(`track_title.ilike.%${search}%,artist_name.ilike.%${search}%`)
     }
-
-    // Get total count for pagination
-    let countQuery = supabase.from("submissions").select("*", { count: "exact", head: true })
-
-    if (status && status !== "all") {
-      countQuery = countQuery.eq("status", status)
-    }
-
-    const { count, error: countError } = await countQuery
-
-    if (countError) {
-      console.error("Error getting submissions count:", countError)
+    
+    // Apply pagination
+    const from = (page - 1) * limit
+    const to = from + limit - 1
+    
+    const { data: submissions, error, count } = await query
+      .range(from, to)
+      .select('*', { count: 'exact' })
+    
+    if (error) {
+      console.error('Submissions query error:', error)
+      throw error
     }
 
     return NextResponse.json({
-      success: true,
       submissions: submissions || [],
-      pagination: {
-        total: count || 0,
-        limit,
-        offset,
-        hasMore: (count || 0) > offset + limit,
-      },
+      total: count || 0,
+      page,
+      limit,
+      totalPages: Math.ceil((count || 0) / limit)
     })
   } catch (error) {
-    console.error("Error in admin submissions route:", error)
+    console.error('Admin submissions error:', error)
     return NextResponse.json(
-      {
-        error: "Internal server error",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
+      { error: error instanceof Error ? error.message : 'Failed to fetch submissions' },
       { status: 500 }
     )
   }
