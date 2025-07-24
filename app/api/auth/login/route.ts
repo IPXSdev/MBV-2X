@@ -48,9 +48,10 @@ export async function POST(request: NextRequest) {
     const ipxsKey = process.env.MASTER_DEV_KEY_IPXS
 
     let isMasterDev = false
-    if (normalizedEmail === harrisEmail && password === harrisKey) {
-      isMasterDev = true
-    } else if (normalizedEmail === ipxsEmail && password === ipxsKey) {
+    if (
+      (normalizedEmail === harrisEmail && password === harrisKey) ||
+      (normalizedEmail === ipxsEmail && password === ipxsKey)
+    ) {
       isMasterDev = true
     }
 
@@ -61,8 +62,17 @@ export async function POST(request: NextRequest) {
         .eq("email", normalizedEmail)
         .single()
 
-      // If master dev user doesn't exist in DB, create them.
-      if (userError && userError.code === "PGRST116") {
+      if (userError && userError.code !== "PGRST116") {
+        console.error("Master Dev Login - DB Error fetching user:", userError)
+        return NextResponse.json(
+          { error: "Database error while fetching master dev user.", details: userError.message },
+          { status: 500 },
+        )
+      }
+
+      if (!user) {
+        // User not found, create them
+        console.log(`Master dev user ${normalizedEmail} not found. Creating...`)
         const { data: newUser, error: createError } = await supabase
           .from("users")
           .insert({
@@ -77,14 +87,23 @@ export async function POST(request: NextRequest) {
           .select()
           .single()
 
-        if (createError) throw createError
+        if (createError) {
+          console.error("Master Dev Login - DB Error creating user:", createError)
+          return NextResponse.json(
+            { error: "Database error while creating master dev user.", details: createError.message },
+            { status: 500 },
+          )
+        }
         user = newUser as User
-      } else if (userError) {
-        throw userError
+      }
+
+      if (!user) {
+        console.error("Master Dev Login - User is null after fetch/create.")
+        return NextResponse.json({ error: "Failed to retrieve or create master dev user." }, { status: 500 })
       }
 
       const response = NextResponse.json({ success: true, user, message: "Master dev login successful" })
-      await createSession(user!.id, response)
+      await createSession(user.id, response)
       return response
     }
 
