@@ -5,67 +5,81 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(amount)
-}
-
-export function formatRelativeTime(dateString: string): string {
-  const date = new Date(dateString)
+export function formatRelativeTime(date: Date | string): string {
   const now = new Date()
-  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000)
+  const targetDate = typeof date === "string" ? new Date(date) : date
+  const diffInSeconds = Math.floor((now.getTime() - targetDate.getTime()) / 1000)
 
   if (diffInSeconds < 60) {
-    return "Just now"
-  } else if (diffInSeconds < 3600) {
-    const minutes = Math.floor(diffInSeconds / 60)
-    return `${minutes} minute${minutes > 1 ? "s" : ""} ago`
-  } else if (diffInSeconds < 86400) {
-    const hours = Math.floor(diffInSeconds / 3600)
-    return `${hours} hour${hours > 1 ? "s" : ""} ago`
-  } else if (diffInSeconds < 2592000) {
-    const days = Math.floor(diffInSeconds / 86400)
-    return `${days} day${days > 1 ? "s" : ""} ago`
-  } else {
-    return date.toLocaleDateString()
+    return "just now"
   }
-}
 
-export function formatDuration(seconds: number): string {
-  const minutes = Math.floor(seconds / 60)
-  const remainingSeconds = seconds % 60
-  return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`
+  const diffInMinutes = Math.floor(diffInSeconds / 60)
+  if (diffInMinutes < 60) {
+    return `${diffInMinutes} minute${diffInMinutes === 1 ? "" : "s"} ago`
+  }
+
+  const diffInHours = Math.floor(diffInMinutes / 60)
+  if (diffInHours < 24) {
+    return `${diffInHours} hour${diffInHours === 1 ? "" : "s"} ago`
+  }
+
+  const diffInDays = Math.floor(diffInHours / 24)
+  if (diffInDays < 7) {
+    return `${diffInDays} day${diffInDays === 1 ? "" : "s"} ago`
+  }
+
+  const diffInWeeks = Math.floor(diffInDays / 7)
+  if (diffInWeeks < 4) {
+    return `${diffInWeeks} week${diffInWeeks === 1 ? "" : "s"} ago`
+  }
+
+  const diffInMonths = Math.floor(diffInDays / 30)
+  if (diffInMonths < 12) {
+    return `${diffInMonths} month${diffInMonths === 1 ? "" : "s"} ago`
+  }
+
+  const diffInYears = Math.floor(diffInDays / 365)
+  return `${diffInYears} year${diffInYears === 1 ? "" : "s"} ago`
 }
 
 export function getStatusBadgeColor(status: string): string {
   switch (status?.toLowerCase()) {
     case "pending":
-      return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
+      return "bg-yellow-500/20 text-yellow-300 border-yellow-500/30"
     case "approved":
-      return "bg-green-500/20 text-green-400 border-green-500/30"
+    case "accepted":
+      return "bg-green-500/20 text-green-300 border-green-500/30"
     case "rejected":
-      return "bg-red-500/20 text-red-400 border-red-500/30"
+    case "declined":
+      return "bg-red-500/20 text-red-300 border-red-500/30"
     case "under_review":
-      return "bg-blue-500/20 text-blue-400 border-blue-500/30"
-    case "placed":
-      return "bg-purple-500/20 text-purple-400 border-purple-500/30"
-    case "active":
-      return "bg-green-500/20 text-green-400 border-green-500/30"
-    case "inactive":
-      return "bg-gray-500/20 text-gray-400 border-gray-500/30"
+    case "reviewing":
+      return "bg-blue-500/20 text-blue-300 border-blue-500/30"
+    case "draft":
+      return "bg-gray-500/20 text-gray-300 border-gray-500/30"
     default:
-      return "bg-gray-500/20 text-gray-400 border-gray-500/30"
+      return "bg-gray-500/20 text-gray-300 border-gray-500/30"
   }
 }
 
 export function formatFileSize(bytes: number): string {
   if (bytes === 0) return "0 Bytes"
+
   const k = 1024
   const sizes = ["Bytes", "KB", "MB", "GB"]
   const i = Math.floor(Math.log(bytes) / Math.log(k))
+
   return Number.parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i]
+}
+
+export function formatDuration(seconds: number): string {
+  if (!seconds || seconds === 0) return "0:00"
+
+  const minutes = Math.floor(seconds / 60)
+  const remainingSeconds = Math.floor(seconds % 60)
+
+  return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`
 }
 
 export function truncateText(text: string, maxLength: number): string {
@@ -73,13 +87,44 @@ export function truncateText(text: string, maxLength: number): string {
   return text.substring(0, maxLength) + "..."
 }
 
-export function formatDate(date: string | Date): string {
-  const d = new Date(date)
-  return d.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  })
+export function capitalizeFirst(str: string): string {
+  if (!str) return str
+  return str.charAt(0).toUpperCase() + str.slice(1)
+}
+
+export function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\w ]+/g, "")
+    .replace(/ +/g, "-")
+}
+
+export function isValidEmail(email: string): boolean {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  return emailRegex.test(email)
+}
+
+export function generateId(): string {
+  return Math.random().toString(36).substring(2) + Date.now().toString(36)
+}
+
+export function debounce<T extends (...args: any[]) => any>(func: T, wait: number): (...args: Parameters<T>) => void {
+  let timeout: NodeJS.Timeout | null = null
+
+  return (...args: Parameters<T>) => {
+    if (timeout) clearTimeout(timeout)
+    timeout = setTimeout(() => func(...args), wait)
+  }
+}
+
+export function throttle<T extends (...args: any[]) => any>(func: T, limit: number): (...args: Parameters<T>) => void {
+  let inThrottle: boolean
+
+  return (...args: Parameters<T>) => {
+    if (!inThrottle) {
+      func(...args)
+      inThrottle = true
+      setTimeout(() => (inThrottle = false), limit)
+    }
+  }
 }
