@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
         role: "user",
         tier: "creator",
         submission_credits: 3,
-        is_verified: true, // Or false if you have an email verification flow
+        is_verified: true,
       })
       .select()
       .single()

@@ -8,7 +8,7 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-async function createSession(userId: string, response: NextResponse, user: User) {
+async function createSession(userId: string, response: NextResponse) {
   const sessionToken = randomBytes(32).toString("hex")
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
 
@@ -19,6 +19,7 @@ async function createSession(userId: string, response: NextResponse, user: User)
   })
 
   if (sessionError) {
+    console.error("Failed to create session:", sessionError)
     throw new Error("Failed to create session")
   }
 
@@ -53,12 +54,12 @@ export async function POST(request: NextRequest) {
       if (isHarris || isIpxs) {
         let { data: user, error: userError } = await supabase
           .from("users")
-          .select("*")
+          .select<"*", User>("*")
           .eq("email", normalizedEmail)
           .single()
 
         if (userError && userError.code === "PGRST116") {
-          // User not found, create them
+          // User not found, create them with master_dev role
           const { data: newUser, error: createError } = await supabase
             .from("users")
             .insert({
@@ -73,13 +74,13 @@ export async function POST(request: NextRequest) {
             .single()
 
           if (createError) throw createError
-          user = newUser
+          user = newUser as User
         } else if (userError) {
           throw userError
         }
 
         const response = NextResponse.json({ success: true, user, message: "Master dev login successful" })
-        await createSession(user.id, response, user)
+        await createSession(user!.id, response)
         return response
       }
     }
@@ -87,7 +88,7 @@ export async function POST(request: NextRequest) {
     // Regular User Login
     const { data: user, error: userError } = await supabase
       .from("users")
-      .select("*")
+      .select<"*", User>("*")
       .eq("email", normalizedEmail)
       .single()
 
@@ -105,7 +106,7 @@ export async function POST(request: NextRequest) {
     }
 
     const response = NextResponse.json({ success: true, user, message: "Login successful" })
-    await createSession(user.id, response, user)
+    await createSession(user.id, response)
     return response
   } catch (error) {
     console.error("Login API Error:", error)

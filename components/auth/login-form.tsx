@@ -43,9 +43,8 @@ export function LoginForm() {
   }
 
   const fillMasterDevCredentials = () => {
-    setEmail("harris@tmbm.dev")
-    // For security, the master key is not pre-filled and must be entered manually.
-    setPassword("")
+    setEmail("harris@tmbm.com")
+    setPassword(process.env.NEXT_PUBLIC_MASTER_DEV_KEY_HARRIS || "")
   }
 
   return (
@@ -55,10 +54,7 @@ export function LoginForm() {
         <div className="flex justify-center">
           <div className="relative w-80 h-80 rounded-xl overflow-hidden bg-black/20 backdrop-blur-sm border border-white/10 shadow-2xl">
             <video autoPlay loop muted playsInline className="w-full h-full object-cover">
-              <source
-                src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/Welcome%20back%20%3A%20login%20visual-YnNO9wO2szXBs3Cv76kMVli0LsOcik.mp4"
-                type="video/mp4"
-              />
+              <source src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/Welcome%20back%20%3A%20login%20visual-YnNO9wO2szXBs3Cv76kMVli0LsOcik.mp4" type="video/mp4" />
             </video>
             {/* Subtle overlay for better visual depth */}
             <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent pointer-events-none" />

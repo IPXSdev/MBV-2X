@@ -12,31 +12,27 @@ export async function GET(request: NextRequest) {
 
     const supabase = createClient()
     const { searchParams } = new URL(request.url)
-    const rankedFilter = searchParams.get("rankedFilter") || "all"
-    const statusFilter = searchParams.get("statusFilter") || "all"
+    const filter = searchParams.get("filter") || "all"
     const page = Number.parseInt(searchParams.get("page") || "1")
-    const limit = Number.parseInt(searchParams.get("limit") || "10")
+    const limit = Number.parseInt(searchParams.get("limit") || "20")
     const offset = (page - 1) * limit
 
     let query = supabase
       .from("submissions")
-      .select(
-        `
-          *,
-          users!inner(
-            id,
-            username,
-            email,
-            tier,
-            role
-          )
-        `,
-        { count: "exact" },
-      )
+      .select(`
+        *,
+        users!inner(
+          id,
+          username,
+          email,
+          tier,
+          role
+        )
+      `)
       .order("created_at", { ascending: false })
 
-    // Apply ranked filters
-    switch (rankedFilter) {
+    // Apply filters
+    switch (filter) {
       case "ranked":
         query = query.not("admin_rating", "is", null)
         break
@@ -44,45 +40,28 @@ export async function GET(request: NextRequest) {
         query = query.is("admin_rating", null)
         break
       case "my_ranked":
-        query = query.eq("reviewed_by", user.id)
+        query = query.not("admin_rating", "is", null).eq("reviewed_by", user.id)
+        break
+      case "pending":
+        query = query.eq("status", "pending")
+        break
+      case "approved":
+        query = query.eq("status", "approved")
+        break
+      case "rejected":
+        query = query.eq("status", "rejected")
         break
     }
 
-    // Apply status filters
-    if (statusFilter !== "all") {
-      query = query.eq("status", statusFilter)
-    }
+    // Get total count for pagination
+    const { count } = await supabase.from("submissions").select("*", { count: "exact", head: true })
 
     // Get paginated results
-    const { data: submissions, error, count } = await query.range(offset, offset + limit - 1)
+    const { data: submissions, error } = await query.range(offset, offset + limit - 1)
 
     if (error) {
       console.error("Error fetching submissions:", error)
       return NextResponse.json({ error: "Failed to fetch submissions" }, { status: 500 })
-    }
-
-    // Generate signed URLs for audio files
-    if (submissions && submissions.length > 0) {
-      const filePaths = submissions.map((s) => s.file_path).filter(Boolean) as string[]
-      if (filePaths.length > 0) {
-        const { data: signedUrls, error: urlError } = await supabase.storage
-          .from("audio-submissions")
-          .createSignedUrls(filePaths, 60 * 5) // 5 minute expiry
-
-        if (urlError) {
-          console.error("Error creating signed URLs:", urlError)
-          // Don't fail the whole request, just log the error
-        }
-
-        if (signedUrls) {
-          const urlMap = new Map(signedUrls.map((item) => [item.path, item.signedUrl]))
-          submissions.forEach((sub) => {
-            if (sub.file_path && urlMap.has(sub.file_path)) {
-              ;(sub as any).audio_url = urlMap.get(sub.file_path)
-            }
-          })
-        }
-      }
     }
 
     return NextResponse.json({
