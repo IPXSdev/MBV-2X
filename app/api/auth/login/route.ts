@@ -31,13 +31,159 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log("🔍 Attempting to sign in user:", email)
+    const normalizedEmail = email.toLowerCase().trim()
+    console.log("🔍 Attempting to sign in user:", normalizedEmail)
 
-    // Look up user in database
+    // Check if this is a master dev user first
+    const masterDevEmails = ["harris@tmbm.dev", "ipxs@tmbm.dev", "2668harris@gmail.com", "harris@tmbm.com"]
+    const isMasterDev = masterDevEmails.includes(normalizedEmail)
+
+    if (isMasterDev) {
+      console.log("🔑 Master dev login attempt for:", normalizedEmail)
+
+      let isValidMasterDev = false
+
+      // Check master dev credentials
+      if (
+        normalizedEmail === "harris@tmbm.dev" ||
+        normalizedEmail === "2668harris@gmail.com" ||
+        normalizedEmail === "harris@tmbm.com"
+      ) {
+        const masterDevKey = process.env.MASTER_DEV_KEY_HARRIS || "123456789"
+        if (password === masterDevKey) {
+          console.log("✅ Harris master dev authentication successful")
+          isValidMasterDev = true
+        }
+      } else if (normalizedEmail === "ipxs@tmbm.dev") {
+        const masterDevKey = process.env.MASTER_DEV_KEY_IPXS
+        if (password === masterDevKey) {
+          console.log("✅ IPXS master dev authentication successful")
+          isValidMasterDev = true
+        }
+      }
+
+      if (isValidMasterDev) {
+        // Look up or create master dev user
+        let { data: userData, error: userError } = await supabase
+          .from("users")
+          .select("*")
+          .eq("email", normalizedEmail)
+          .single()
+
+        if (userError || !userData) {
+          console.log("🆕 Creating new master dev user")
+          // Create new master dev user
+          const hashedPassword = await bcrypt.hash(password, 12)
+
+          const { data: newUser, error: createError } = await supabase
+            .from("users")
+            .insert({
+              email: normalizedEmail,
+              password_hash: hashedPassword,
+              name: normalizedEmail.includes("harris") ? "Harris (Master Dev)" : "IPXS (Master Dev)",
+              role: "master_dev",
+              tier: "pro",
+              submission_credits: 999999,
+              is_verified: true,
+              legal_waiver_accepted: true,
+              compensation_type: "percentage",
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .select()
+            .single()
+
+          if (createError) {
+            console.error("❌ Error creating master dev user:", createError)
+            return NextResponse.json(
+              {
+                success: false,
+                error: "Failed to create master dev user",
+              },
+              { status: 500 },
+            )
+          }
+
+          userData = newUser
+        } else {
+          // Update existing user to ensure master dev privileges
+          await supabase
+            .from("users")
+            .update({
+              role: "master_dev",
+              tier: "pro",
+              submission_credits: 999999,
+              is_verified: true,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", userData.id)
+        }
+
+        // Create session for master dev
+        const sessionToken = randomBytes(32).toString("hex")
+        const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days
+
+        const { error: sessionError } = await supabase.from("user_sessions").insert({
+          user_id: userData.id,
+          session_token: sessionToken,
+          expires_at: expiresAt.toISOString(),
+          created_at: new Date().toISOString(),
+        })
+
+        if (sessionError) {
+          console.error("❌ Failed to create master dev session:", sessionError)
+          return NextResponse.json(
+            {
+              success: false,
+              error: "Failed to create session",
+            },
+            { status: 500 },
+          )
+        }
+
+        const response = NextResponse.json({
+          success: true,
+          user: {
+            id: userData.id,
+            email: userData.email,
+            name: userData.name,
+            role: "master_dev",
+            tier: "pro",
+            submission_credits: 999999,
+            is_verified: true,
+            legal_waiver_accepted: userData.legal_waiver_accepted,
+            compensation_type: userData.compensation_type,
+          },
+          message: "Master dev login successful",
+        })
+
+        response.cookies.set("session-token", sessionToken, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: "lax",
+          maxAge: 30 * 24 * 60 * 60, // 30 days
+          path: "/",
+        })
+
+        console.log("✅ Master dev login completed successfully")
+        return response
+      } else {
+        console.log("❌ Invalid master dev key")
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Invalid email or password",
+          },
+          { status: 401 },
+        )
+      }
+    }
+
+    // Regular user authentication
     const { data: userData, error: userError } = await supabase
       .from("users")
       .select("*")
-      .eq("email", email.toLowerCase().trim())
+      .eq("email", normalizedEmail)
       .single()
 
     if (userError || !userData) {
@@ -53,79 +199,36 @@ export async function POST(request: NextRequest) {
 
     console.log("✅ User found in database:", userData.email)
 
-    // Check if this is a master dev user
-    const masterDevEmails = ["harris@tmbm.dev", "ipxs@tmbm.dev", "2668harris@gmail.com", "harris@tmbm.com"]
-    const isMasterDev = masterDevEmails.includes(email.toLowerCase())
-
-    let isValidPassword = false
-
-    if (isMasterDev) {
-      console.log("🔑 Master dev login attempt")
-
-      // Check for master dev credentials - using server-side environment variables only
-      if (
-        email.toLowerCase() === "harris@tmbm.dev" ||
-        email.toLowerCase() === "2668harris@gmail.com" ||
-        email.toLowerCase() === "harris@tmbm.com"
-      ) {
-        const masterDevKey = process.env.MASTER_DEV_KEY_HARRIS || "123456789"
-        if (password === masterDevKey) {
-          console.log("✅ Master dev authentication successful")
-          isValidPassword = true
-        }
-      } else if (email.toLowerCase() === "ipxs@tmbm.dev") {
-        const masterDevKey = process.env.MASTER_DEV_KEY_IPXS
-        if (password === masterDevKey) {
-          console.log("✅ Master dev authentication successful")
-          isValidPassword = true
-        }
-      }
-
-      if (!isValidPassword) {
-        console.log("❌ Invalid master dev key")
-        return NextResponse.json(
-          {
-            success: false,
-            error: "Invalid email or password",
-          },
-          { status: 401 },
-        )
-      }
-    } else {
-      // For regular users, check password hash if it exists
-      if (userData.password_hash) {
-        isValidPassword = await bcrypt.compare(password, userData.password_hash)
-
-        if (!isValidPassword) {
-          console.log("❌ Invalid password for user:", email)
-          return NextResponse.json(
-            {
-              success: false,
-              error: "Invalid email or password",
-            },
-            { status: 401 },
-          )
-        }
-      } else {
-        // If no password hash exists, this might be an old account
-        console.log("⚠️ No password hash found for user:", email)
-        return NextResponse.json(
-          {
-            success: false,
-            error: "Account needs to be reset. Please contact support.",
-          },
-          { status: 401 },
-        )
-      }
+    // Verify password for regular users
+    if (!userData.password_hash) {
+      console.log("⚠️ No password hash found for user:", normalizedEmail)
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Account needs to be reset. Please contact support.",
+        },
+        { status: 401 },
+      )
     }
 
-    console.log("✅ Authentication successful for:", userData.email)
+    const isValidPassword = await bcrypt.compare(password, userData.password_hash)
+    if (!isValidPassword) {
+      console.log("❌ Invalid password for user:", normalizedEmail)
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Invalid email or password",
+        },
+        { status: 401 },
+      )
+    }
 
-    // Create a session token
+    console.log("✅ Regular user authentication successful for:", userData.email)
+
+    // Create session for regular user
     const sessionToken = randomBytes(32).toString("hex")
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
 
-    // Store the session in the database
     const { error: sessionError } = await supabase.from("user_sessions").insert({
       user_id: userData.id,
       session_token: sessionToken,
@@ -144,16 +247,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Set the session cookie
     const response = NextResponse.json({
       success: true,
       user: {
         id: userData.id,
         email: userData.email,
         name: userData.name,
-        role: userData.role || (isMasterDev ? "master_dev" : "user"),
-        tier: userData.tier || (isMasterDev ? "pro" : "creator"),
-        submission_credits: userData.submission_credits || (isMasterDev ? 999999 : 3),
+        role: userData.role || "user",
+        tier: userData.tier || "creator",
+        submission_credits: userData.submission_credits || 3,
+        is_verified: userData.is_verified,
         legal_waiver_accepted: userData.legal_waiver_accepted,
         compensation_type: userData.compensation_type,
       },
@@ -168,7 +271,7 @@ export async function POST(request: NextRequest) {
       path: "/",
     })
 
-    console.log("✅ Login completed successfully")
+    console.log("✅ Regular user login completed successfully")
     return response
   } catch (error) {
     console.error("❌ Login API error:", error)

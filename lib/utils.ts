@@ -5,43 +5,23 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function getStatusBadgeColor(status: string) {
-  switch (status) {
-    case "pending":
-      return "bg-yellow-500/20 text-yellow-300 border-yellow-500/30"
-    case "in_review":
-      return "bg-blue-500/20 text-blue-300 border-blue-500/30"
-    case "approved":
-      return "bg-green-500/20 text-green-300 border-green-500/30"
-    case "rejected":
-      return "bg-red-500/20 text-red-300 border-red-500/30"
-    default:
-      return "bg-gray-500/20 text-gray-300 border-gray-500/30"
-  }
-}
-
-export function formatFileSize(bytes: number): string {
-  if (bytes === 0) return "0 Bytes"
-  const k = 1024
-  const sizes = ["Bytes", "KB", "MB", "GB"]
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return Number.parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i]
-}
-
-export function formatRelativeTime(date: string | Date): string {
+export function formatRelativeTime(date: Date | string): string {
   const now = new Date()
-  const targetDate = new Date(date)
+  const targetDate = typeof date === "string" ? new Date(date) : date
   const diffInSeconds = Math.floor((now.getTime() - targetDate.getTime()) / 1000)
 
-  if (diffInSeconds < 60) return "just now"
-  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`
-  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`
-  if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)}d ago`
-
-  return targetDate.toLocaleDateString()
-}
-
-export function truncateText(text: string, maxLength: number): string {
-  if (text.length <= maxLength) return text
-  return text.substring(0, maxLength) + "..."
+  if (diffInSeconds < 60) {
+    return "just now"
+  } else if (diffInSeconds < 3600) {
+    const minutes = Math.floor(diffInSeconds / 60)
+    return `${minutes} minute${minutes > 1 ? "s" : ""} ago`
+  } else if (diffInSeconds < 86400) {
+    const hours = Math.floor(diffInSeconds / 3600)
+    return `${hours} hour${hours > 1 ? "s" : ""} ago`
+  } else if (diffInSeconds < 2592000) {
+    const days = Math.floor(diffInSeconds / 86400)
+    return `${days} day${days > 1 ? "s" : ""} ago`
+  } else {
+    return targetDate.toLocaleDateString()
+  }
 }

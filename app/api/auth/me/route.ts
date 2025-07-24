@@ -1,20 +1,32 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createServiceClient } from "@/lib/supabase/server"
-import { cookies } from "next/headers"
+import { createClient } from "@supabase/supabase-js"
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+
+const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false,
+  },
+})
 
 export async function GET(request: NextRequest) {
   try {
-    const cookieStore = await cookies()
-    const sessionToken = cookieStore.get("session-token")?.value
+    console.log("🔍 Auth check request received")
+
+    // Get session token from cookie
+    const sessionToken = request.cookies.get("session-token")?.value
 
     if (!sessionToken) {
-      return NextResponse.json({ error: "No session token" }, { status: 401 })
+      console.log("❌ No session token found")
+      return NextResponse.json({ user: null }, { status: 401 })
     }
 
-    const supabase = createServiceClient()
+    console.log("🔑 Session token found, validating...")
 
-    // Get user from session token
-    const { data, error } = await supabase
+    // Look up session in database
+    const { data: sessionData, error: sessionError } = await supabase
       .from("user_sessions")
       .select(`
         user_id,
@@ -27,27 +39,34 @@ export async function GET(request: NextRequest) {
           tier,
           submission_credits,
           is_verified,
-          created_at,
-          updated_at,
           legal_waiver_accepted,
-          compensation_type
+          compensation_type,
+          created_at,
+          updated_at
         )
       `)
       .eq("session_token", sessionToken)
       .single()
 
-    if (error || !data || !data.users) {
-      return NextResponse.json({ error: "Invalid session" }, { status: 401 })
+    if (sessionError || !sessionData || !sessionData.users) {
+      console.log("❌ Invalid session token:", sessionError?.message)
+      return NextResponse.json({ user: null }, { status: 401 })
     }
 
     // Check if session is expired
-    if (new Date(data.expires_at) < new Date()) {
+    const expiresAt = new Date(sessionData.expires_at)
+    const now = new Date()
+
+    if (expiresAt < now) {
+      console.log("❌ Session expired")
       // Clean up expired session
       await supabase.from("user_sessions").delete().eq("session_token", sessionToken)
-      return NextResponse.json({ error: "Session expired" }, { status: 401 })
+      return NextResponse.json({ user: null }, { status: 401 })
     }
 
-    const user = Array.isArray(data.users) ? data.users[0] : data.users
+    const user = Array.isArray(sessionData.users) ? sessionData.users[0] : sessionData.users
+
+    console.log("✅ Valid session found for user:", user.email)
 
     return NextResponse.json({
       user: {
@@ -58,14 +77,20 @@ export async function GET(request: NextRequest) {
         tier: user.tier,
         submission_credits: user.submission_credits,
         is_verified: user.is_verified,
-        created_at: user.created_at,
-        updated_at: user.updated_at,
         legal_waiver_accepted: user.legal_waiver_accepted,
         compensation_type: user.compensation_type,
+        created_at: user.created_at,
+        updated_at: user.updated_at,
       },
     })
   } catch (error) {
-    console.error("Error getting current user:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    console.error("❌ Auth check error:", error)
+    return NextResponse.json(
+      {
+        user: null,
+        error: "Internal server error",
+      },
+      { status: 500 },
+    )
   }
 }

@@ -9,6 +9,9 @@ interface User {
   role: string
   tier?: string
   submission_credits?: number
+  is_verified?: boolean
+  legal_waiver_accepted?: boolean
+  compensation_type?: string
 }
 
 interface AuthContextType {
@@ -124,14 +127,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearTimeout(timeoutId)
 
       const responseText = await response.text()
-      console.log("📝 Login response:", responseText.substring(0, 200))
+      console.log("📝 Login response status:", response.status)
+      console.log("📝 Login response text:", responseText.substring(0, 500))
 
       let data
       try {
         data = responseText ? JSON.parse(responseText) : {}
       } catch (parseError) {
         console.error("❌ Failed to parse login response:", responseText.substring(0, 200))
-        return { success: false, error: "Invalid response from server" }
+        const errorMsg = "Invalid response from server"
+        setError(errorMsg)
+        return { success: false, error: errorMsg }
       }
 
       if (response.ok && data.success && data.user) {
