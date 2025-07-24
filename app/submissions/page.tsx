@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { EnhancedAudioPlayer } from "@/components/ui/enhanced-audio-player"
+import { EnhancedAudioPlayer } from "@/components/player/enhanced-audio-player"
 import {
   Music,
   Plus,
@@ -33,7 +33,7 @@ interface Submission {
   updated_at: string
   admin_feedback?: string
   mood_tags: string[]
-  file_url?: string
+  audio_url?: string
   duration?: number
   file_size?: number
   admin_rating?: number
@@ -76,7 +76,6 @@ export default function SubmissionsPage() {
 
   const checkAuthAndLoadData = async () => {
     try {
-      // Check authentication
       const authResponse = await fetch("/api/auth/me")
       if (!authResponse.ok) {
         router.push("/login?redirect=/submissions")
@@ -86,7 +85,6 @@ export default function SubmissionsPage() {
       const userData = await authResponse.json()
       setUser(userData.user)
 
-      // Load submissions
       const submissionsResponse = await fetch("/api/user/submissions")
       if (submissionsResponse.ok) {
         const submissionsData = await submissionsResponse.json()
@@ -134,10 +132,6 @@ export default function SubmissionsPage() {
     return `${mins}:${secs.toString().padStart(2, "0")}`
   }
 
-  const formatFileSize = (bytes: number) => {
-    return (bytes / (1024 * 1024)).toFixed(1) + " MB"
-  }
-
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
@@ -154,7 +148,6 @@ export default function SubmissionsPage() {
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       <div className="max-w-7xl mx-auto p-6">
-        {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center space-x-4">
             <Button
@@ -198,7 +191,6 @@ export default function SubmissionsPage() {
           </div>
         </div>
 
-        {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
           <Card className="bg-gray-800 border-gray-700">
             <CardContent className="p-4 text-center">
@@ -232,7 +224,6 @@ export default function SubmissionsPage() {
           </Card>
         </div>
 
-        {/* Filters */}
         <Card className="bg-gray-800 border-gray-700 mb-8">
           <CardContent className="p-6">
             <div className="flex flex-col md:flex-row gap-4">
@@ -300,7 +291,6 @@ export default function SubmissionsPage() {
           </CardContent>
         </Card>
 
-        {/* Submissions List */}
         {filteredSubmissions.length === 0 ? (
           <Card className="bg-gray-800 border-gray-700">
             <CardContent className="p-12 text-center">
@@ -376,11 +366,11 @@ export default function SubmissionsPage() {
                       </div>
 
                       <div className="flex items-center space-x-2 ml-4">
-                        {submission.file_url && (
+                        {submission.audio_url && (
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => window.open(submission.file_url, "_blank")}
+                            onClick={() => window.open(submission.audio_url, "_blank")}
                             className="border-gray-600 text-white hover:bg-gray-700 bg-transparent"
                           >
                             <Download className="h-4 w-4" />
@@ -389,11 +379,10 @@ export default function SubmissionsPage() {
                       </div>
                     </div>
 
-                    {/* Enhanced Audio Player */}
-                    {submission.file_url && (
+                    {submission.audio_url && (
                       <div className="mb-4">
                         <EnhancedAudioPlayer
-                          src={submission.file_url}
+                          src={submission.audio_url}
                           title={submission.track_title}
                           artist={submission.artist_name}
                           duration={submission.duration}

@@ -59,7 +59,8 @@
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
     "uuid": "^9.0.1",
-    "vaul": "latest"
+    "vaul": "latest",
+    "wavesurfer.js": "latest"
   },
   "devDependencies": {
     "@types/node": "^22",
