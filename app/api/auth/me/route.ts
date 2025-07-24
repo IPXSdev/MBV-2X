@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { cookies } from "next/headers"
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -15,17 +16,17 @@ export async function GET(request: NextRequest) {
   try {
     console.log("🔍 Auth check request received")
 
-    // Get session token from cookie
-    const sessionToken = request.cookies.get("session-token")?.value
+    const cookieStore = cookies()
+    const sessionToken = cookieStore.get("session-token")?.value
 
     if (!sessionToken) {
       console.log("❌ No session token found")
       return NextResponse.json({ user: null }, { status: 401 })
     }
 
-    console.log("🔑 Session token found, validating...")
+    console.log("🔍 Checking session token:", sessionToken.substring(0, 10) + "...")
 
-    // Look up session in database
+    // Get user session from database
     const { data: sessionData, error: sessionError } = await supabase
       .from("user_sessions")
       .select(`
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest) {
       .single()
 
     if (sessionError || !sessionData || !sessionData.users) {
-      console.log("❌ Invalid session token:", sessionError?.message)
+      console.log("❌ Session not found or invalid:", sessionError?.message)
       return NextResponse.json({ user: null }, { status: 401 })
     }
 
@@ -85,12 +86,6 @@ export async function GET(request: NextRequest) {
     })
   } catch (error) {
     console.error("❌ Auth check error:", error)
-    return NextResponse.json(
-      {
-        user: null,
-        error: "Internal server error",
-      },
-      { status: 500 },
-    )
+    return NextResponse.json({ user: null }, { status: 500 })
   }
 }

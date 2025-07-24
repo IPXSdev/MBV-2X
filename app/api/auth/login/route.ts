@@ -50,15 +50,21 @@ export async function POST(request: NextRequest) {
         normalizedEmail === "harris@tmbm.com"
       ) {
         const masterDevKey = process.env.MASTER_DEV_KEY_HARRIS || "123456789"
+        console.log("🔑 Checking Harris master dev key")
         if (password === masterDevKey) {
           console.log("✅ Harris master dev authentication successful")
           isValidMasterDev = true
+        } else {
+          console.log("❌ Harris master dev key mismatch")
         }
       } else if (normalizedEmail === "ipxs@tmbm.dev") {
         const masterDevKey = process.env.MASTER_DEV_KEY_IPXS
+        console.log("🔑 Checking IPXS master dev key")
         if (password === masterDevKey) {
           console.log("✅ IPXS master dev authentication successful")
           isValidMasterDev = true
+        } else {
+          console.log("❌ IPXS master dev key mismatch")
         }
       }
 
@@ -168,7 +174,7 @@ export async function POST(request: NextRequest) {
         console.log("✅ Master dev login completed successfully")
         return response
       } else {
-        console.log("❌ Invalid master dev key")
+        console.log("❌ Invalid master dev key for:", normalizedEmail)
         return NextResponse.json(
           {
             success: false,
@@ -180,6 +186,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Regular user authentication
+    console.log("👤 Regular user login attempt for:", normalizedEmail)
     const { data: userData, error: userError } = await supabase
       .from("users")
       .select("*")
