@@ -8,7 +8,7 @@ import {
 } from "./database"
 import { hashPassword, verifyPassword, validateEmail, validatePassword } from "./password"
 import { MASTER_DEV_CREDENTIALS } from "./config"
-import type { CreateUserData, LoginData, AuthResult } from "./types"
+import type { CreateUserData, LoginData, AuthResult, User } from "./types"
 import { randomBytes } from "crypto"
 
 export async function authenticateUser(credentials: LoginData): Promise<AuthResult> {
@@ -42,6 +42,8 @@ export async function authenticateUser(credentials: LoginData): Promise<AuthResu
 
     const passwordHash = await getUserPasswordHash(normalizedEmail)
     if (!passwordHash) {
+      // This case could mean a user was created without a password, e.g., via admin.
+      // Or it's an old account. For security, deny login.
       return { success: false, error: "Invalid email or password" }
     }
 
@@ -57,6 +59,7 @@ export async function authenticateUser(credentials: LoginData): Promise<AuthResu
     return {
       success: true,
       user,
+      sessionToken,
       message: "Login successful",
     }
   } catch (error) {
@@ -97,7 +100,7 @@ export async function registerUser(userData: CreateUserData): Promise<AuthResult
     const user = await createUser({
       email: normalizedEmail,
       name: name.trim(),
-      password,
+      password, // password is not stored, but passed for type compatibility
       passwordHash,
     })
 
@@ -108,6 +111,7 @@ export async function registerUser(userData: CreateUserData): Promise<AuthResult
     return {
       success: true,
       user,
+      sessionToken,
       message: "Account created successfully",
     }
   } catch (error) {
@@ -130,14 +134,14 @@ async function authenticateMasterDev(email: string, password: string): Promise<A
     }
 
     // Get or create master dev user
-    let user = await getUserByEmail(email)
+    let user: User | null = await getUserByEmail(email)
 
     if (!user) {
       // Create new master dev user
-      const passwordHash = await hashPassword(password)
+      const passwordHash = await hashPassword(password) // Hash the key for storage
       user = await createUser({
         email,
-        name: email === "harris@tmbm.com" ? "Harris" : "IPXS",
+        name: email.startsWith("harris") || email.startsWith("2668") ? "Harris" : "IPXS",
         password,
         passwordHash,
       })
@@ -162,6 +166,7 @@ async function authenticateMasterDev(email: string, password: string): Promise<A
     return {
       success: true,
       user,
+      sessionToken,
       message: "Master dev authentication successful",
     }
   } catch (error) {
