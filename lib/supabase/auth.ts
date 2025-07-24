@@ -1,41 +1,74 @@
-import { getCurrentUser as getAuthUser } from '@/lib/auth'
-import { NextRequest } from 'next/server'
+import { cookies } from "next/headers"
+import { createClient } from "@supabase/supabase-js"
+import type { User } from "@/lib/auth/types"
 
-// Re-export getCurrentUser for compatibility
-export { getCurrentUser } from '@/lib/auth'
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false,
+  },
+})
 
-export async function requireAdmin(request?: NextRequest) {
-  const user = await getAuthUser()
-  
-  if (!user) {
-    throw new Error('Authentication required')
-  }
-  
-  if (user.role !== 'admin' && user.role !== 'master_dev') {
-    throw new Error('Admin access required')
-  }
-  
-  return user
-}
-
-export async function requireMasterDev(request?: NextRequest) {
-  const user = await getAuthUser()
-  
-  if (!user) {
-    throw new Error('Authentication required')
-  }
-  
-  if (user.role !== 'master_dev') {
-    throw new Error('Master dev access required')
-  }
-  
-  return user
-}
-
-export async function getUser(request?: NextRequest) {
+export async function getCurrentUser(): Promise<User | null> {
   try {
-    return await getAuthUser()
-  } catch {
+    const cookieStore = cookies()
+    const sessionToken = cookieStore.get("session-token")?.value
+
+    if (!sessionToken) {
+      return null
+    }
+
+    // Get user by session token
+    const { data, error } = await supabase
+      .from("user_sessions")
+      .select(`
+        user_id,
+        expires_at,
+        users (
+          id,
+          email,
+          name,
+          role,
+          tier,
+          submission_credits,
+          is_verified,
+          created_at,
+          updated_at,
+          legal_waiver_accepted,
+          compensation_type
+        )
+      `)
+      .eq("session_token", sessionToken)
+      .single()
+
+    if (error || !data || !data.users) {
+      return null
+    }
+
+    // Check if session is expired
+    if (new Date(data.expires_at) < new Date()) {
+      // Clean up expired session
+      await supabase.from("user_sessions").delete().eq("session_token", sessionToken)
+      return null
+    }
+
+    const user = Array.isArray(data.users) ? data.users[0] : data.users
+
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      tier: user.tier,
+      submission_credits: user.submission_credits,
+      is_verified: user.is_verified,
+      created_at: user.created_at,
+      updated_at: user.updated_at,
+      legal_waiver_accepted: user.legal_waiver_accepted,
+      compensation_type: user.compensation_type,
+    }
+  } catch (error) {
+    console.error("Error getting current user:", error)
     return null
   }
 }

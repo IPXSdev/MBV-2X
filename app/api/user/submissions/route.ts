@@ -6,20 +6,27 @@ export const dynamic = "force-dynamic"
 
 export async function GET(request: NextRequest) {
   try {
+    console.log("🔍 Fetching user submissions...")
+
     // Use custom auth system
     const user = await getCurrentUser()
 
     if (!user) {
+      console.log("❌ No authenticated user found")
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
+
+    console.log("✅ User authenticated:", user.email)
 
     // Use service client for database operations
     const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
     // Get query parameters
     const { searchParams } = new URL(request.url)
-    const limit = Number.parseInt(searchParams.get("limit") || "20")
+    const limit = Number.parseInt(searchParams.get("limit") || "50")
     const offset = Number.parseInt(searchParams.get("offset") || "0")
+
+    console.log(`📊 Fetching submissions for user ${user.id} with limit ${limit}, offset ${offset}`)
 
     // Fetch user's submissions
     const { data: submissions, error: submissionsError } = await supabase
@@ -30,7 +37,7 @@ export async function GET(request: NextRequest) {
       .range(offset, offset + limit - 1)
 
     if (submissionsError) {
-      console.error("Error fetching user submissions:", submissionsError)
+      console.error("❌ Error fetching user submissions:", submissionsError)
       return NextResponse.json(
         {
           error: "Failed to fetch submissions",
@@ -40,6 +47,8 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    console.log(`✅ Found ${submissions?.length || 0} submissions for user`)
+
     // Get total count for pagination
     const { count, error: countError } = await supabase
       .from("submissions")
@@ -47,8 +56,10 @@ export async function GET(request: NextRequest) {
       .eq("user_id", user.id)
 
     if (countError) {
-      console.error("Error getting submissions count:", countError)
+      console.error("⚠️ Error getting submissions count:", countError)
     }
+
+    console.log(`📈 Total submissions count: ${count || 0}`)
 
     return NextResponse.json({
       success: true,
@@ -61,7 +72,7 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error) {
-    console.error("Error in user submissions route:", error)
+    console.error("❌ Error in user submissions route:", error)
     return NextResponse.json(
       {
         error: "Internal server error",
