@@ -34,90 +34,78 @@ export function SignupForm() {
   const router = useRouter()
   const { signup } = useAuth()
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError("")
-
-    // Basic validation
-    if (!firstName.trim() || !lastName.trim()) {
-      setError("First and last name are required")
-      return
-    }
-
-    if (!email.trim()) {
-      setError("Email is required")
-      return
-    }
-
-    if (password !== confirmPassword) {
-      setError("Passwords do not match")
-      return
-    }
-
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters long")
-      return
-    }
-
-    if (!agreeToTerms) {
-      setError("You must agree to the Terms of Service and Privacy Policy")
-      return
-    }
-
-    // Show the legal waiver if not already agreed to
-    if (!agreedToWaiver) {
-      setShowWaiver(true)
-      return
-    }
-
-    // If we get here, the user has agreed to the waiver
+  const performSignup = async (waiverAgreed: boolean) => {
     setLoading(true)
-
+    setError("")
     try {
-      const fullName = `${firstName} ${lastName}`
-      const result = await signup(email, password, fullName)
+      const fullName = `${firstName.trim()} ${lastName.trim()}`
+      const result = await signup(
+        email,
+        password,
+        fullName,
+        artistName,
+        primaryGenre,
+        waiverAgreed,
+        subscribeNewsletter,
+      )
 
       if (result.success) {
-        setSuccess("Account created successfully! Redirecting...")
+        setSuccess("Account created successfully! Redirecting to your dashboard...")
         setTimeout(() => {
           router.push("/dashboard")
-        }, 1500)
+        }, 2000)
       } else {
-        setError(result.error || "Signup failed")
+        setError(result.error || "An unknown error occurred during signup.")
       }
     } catch (err) {
       console.error("Unexpected signup error:", err)
-      setError("An unexpected error occurred")
+      setError("An unexpected error occurred. Please try again.")
     } finally {
       setLoading(false)
     }
   }
 
-  const handleWaiverAgree = () => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError("")
+
+    if (!firstName.trim() || !lastName.trim()) {
+      setError("First and last name are required.")
+      return
+    }
+    if (!artistName.trim()) {
+      setError("Artist name is required.")
+      return
+    }
+    if (!primaryGenre.trim()) {
+      setError("Primary genre is required.")
+      return
+    }
+    if (password !== confirmPassword) {
+      setError("Passwords do not match.")
+      return
+    }
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters long.")
+      return
+    }
+    if (!agreeToTerms) {
+      setError("You must agree to the Terms of Service and Privacy Policy.")
+      return
+    }
+
+    if (!agreedToWaiver) {
+      setShowWaiver(true)
+      return
+    }
+
+    await performSignup(true)
+  }
+
+  const handleWaiverAgree = async () => {
     setAgreedToWaiver(true)
     setShowWaiver(false)
-
-    // Automatically submit the form after agreeing to the waiver
-    setLoading(true)
-    const fullName = `${firstName} ${lastName}`
-    signup(email, password, fullName)
-      .then((result) => {
-        if (result.success) {
-          setSuccess("Account created successfully! Redirecting...")
-          setTimeout(() => {
-            router.push("/dashboard")
-          }, 1500)
-        } else {
-          setError(result.error || "Signup failed")
-        }
-      })
-      .catch((err) => {
-        console.error("Signup error after waiver agreement:", err)
-        setError("An unexpected error occurred")
-      })
-      .finally(() => {
-        setLoading(false)
-      })
+    await performSignup(true)
   }
 
   return (
@@ -361,7 +349,7 @@ export function SignupForm() {
                 <Checkbox
                   id="terms"
                   checked={agreeToTerms}
-                  onCheckedChange={setAgreeToTerms}
+                  onCheckedChange={(checked) => setAgreeToTerms(Boolean(checked))}
                   className="border-gray-600 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600 mt-0.5"
                 />
                 <Label htmlFor="terms" className="text-gray-300 text-sm leading-relaxed">
@@ -381,7 +369,7 @@ export function SignupForm() {
                 <Checkbox
                   id="newsletter"
                   checked={subscribeNewsletter}
-                  onCheckedChange={setSubscribeNewsletter}
+                  onCheckedChange={(checked) => setSubscribeNewsletter(Boolean(checked))}
                   className="border-gray-600 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600 mt-0.5"
                 />
                 <Label htmlFor="newsletter" className="text-gray-300 text-sm leading-relaxed">

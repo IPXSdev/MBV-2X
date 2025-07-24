@@ -9,43 +9,55 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, password, name } = await request.json()
+    const { email, password, name, artistName, primaryGenre, legalWaiverAccepted, subscribeToNewsletter } =
+      await request.json()
     const normalizedEmail = email.toLowerCase().trim()
 
-    if (!normalizedEmail || !password || !name) {
-      return NextResponse.json({ error: "Email, password, and name are required" }, { status: 400 })
+    // --- Validation ---
+    if (!normalizedEmail || !password || !name || !artistName || !primaryGenre) {
+      return NextResponse.json({ error: "Missing required fields. Please complete the form." }, { status: 400 })
     }
-    if (password.length < 6) {
-      return NextResponse.json({ error: "Password must be at least 6 characters" }, { status: 400 })
+    if (password.length < 8) {
+      return NextResponse.json({ error: "Password must be at least 8 characters long." }, { status: 400 })
+    }
+    if (!legalWaiverAccepted) {
+      return NextResponse.json({ error: "The legal waiver must be accepted to create an account." }, { status: 400 })
     }
 
     // Check if user already exists
     const { data: existingUser } = await supabase.from("users").select("id").eq("email", normalizedEmail).single()
     if (existingUser) {
-      return NextResponse.json({ error: "An account with this email already exists" }, { status: 409 })
+      return NextResponse.json({ error: "An account with this email already exists." }, { status: 409 })
     }
 
     const passwordHash = await bcrypt.hash(password, 10)
 
+    // --- Create New User ---
+    // Aligned with the platform bible: new users are on the free 'creator' tier with 0 credits.
     const { data: newUser, error: createError } = await supabase
       .from("users")
       .insert({
         email: normalizedEmail,
         name: name.trim(),
         password_hash: passwordHash,
+        artist_name: artistName.trim(),
+        primary_genre: primaryGenre.trim(),
         role: "user",
-        tier: "creator",
-        submission_credits: 3,
-        is_verified: true,
+        tier: "creator", // 'creator' is the free tier as per docs
+        submission_credits: 0, // Free tier starts with 0 credits
+        is_verified: true, // Auto-verified on signup
+        legal_waiver_accepted: legalWaiverAccepted,
+        subscribed_to_newsletter: subscribeToNewsletter,
       })
       .select()
       .single()
 
     if (createError) {
+      console.error("Supabase user creation error:", createError)
       throw createError
     }
 
-    // Create session
+    // --- Create Session ---
     const sessionToken = randomBytes(32).toString("hex")
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
 
@@ -56,7 +68,10 @@ export async function POST(request: NextRequest) {
     })
 
     if (sessionError) {
-      throw new Error("Failed to create session after signup")
+      console.error("Supabase session creation error:", sessionError)
+      // Note: In a production scenario, you might want to handle this more gracefully,
+      // perhaps by informing the user to try logging in.
+      throw new Error("Failed to create session after signup.")
     }
 
     const response = NextResponse.json({

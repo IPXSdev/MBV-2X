@@ -19,7 +19,15 @@ interface AuthContextType {
   isLoading: boolean
   error: string | null
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
-  signup: (email: string, password: string, name: string) => Promise<{ success: boolean; error?: string }>
+  signup: (
+    email: string,
+    password: string,
+    name: string,
+    artistName: string,
+    primaryGenre: string,
+    legalWaiverAccepted: boolean,
+    subscribeToNewsletter: boolean,
+  ) => Promise<{ success: boolean; error?: string }>
   logout: () => Promise<void>
   refreshUser: () => Promise<void>
 }
@@ -130,7 +138,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const signup = async (email: string, password: string, name: string) => {
+  const signup = async (
+    email: string,
+    password: string,
+    name: string,
+    artistName: string,
+    primaryGenre: string,
+    legalWaiverAccepted: boolean,
+    subscribeToNewsletter: boolean,
+  ) => {
     setLoading(true)
     setError(null)
 
@@ -149,6 +165,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: email.trim(),
           password,
           name: name.trim(),
+          artistName: artistName.trim(),
+          primaryGenre: primaryGenre.trim(),
+          legalWaiverAccepted,
+          subscribeToNewsletter,
         }),
         signal: controller.signal,
       })
