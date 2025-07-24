@@ -11,28 +11,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
-import {
-  Users,
-  FileText,
-  BarChart3,
-  Settings,
-  Search,
-  RefreshCw,
-  Trash2,
-  Edit,
-  Shield,
-  Crown,
-  Play,
-  Download,
-  Upload,
-  Youtube,
-  Star,
-  Clock,
-  Music,
-  Eye,
-  Plus,
-  Minus,
-} from "lucide-react"
+import { getStatusBadgeColor } from "@/lib/utils"
+import { Users, FileText, BarChart3, Settings, Search, RefreshCw, Trash2, Edit, Shield, Crown, Play, Download, Upload, Youtube, Star, Clock, Music, Eye, Plus, Minus, Loader2 } from 'lucide-react'
 
 interface AdminUser {
   id: string
@@ -54,7 +34,7 @@ interface Submission {
   status: "pending" | "in_review" | "approved" | "rejected"
   admin_rating?: number
   admin_feedback?: string
-  submitted_at: string
+  created_at: string
   updated_at?: string
   file_url?: string
   file_size?: number
@@ -89,25 +69,24 @@ interface Stats {
   }
 }
 
-interface MediaItem {
-  id: string
-  title: string
-  description?: string
-  url: string
-  type: "youtube" | "upload"
-  thumbnail?: string
-  created_at: string
+interface MediaData {
+  buckets: any[]
+  files: any[]
+  totalFiles: number
+  totalSize: number
+  formattedSize: string
 }
 
 export function AdminPortal() {
   const { user } = useAuth()
   const [users, setUsers] = useState<AdminUser[]>([])
   const [submissions, setSubmissions] = useState<Submission[]>([])
-  const [media, setMedia] = useState<MediaItem[]>([])
+  const [media, setMedia] = useState<MediaData | null>(null)
   const [stats, setStats] = useState<Stats | null>(null)
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [activeTab, setActiveTab] = useState("submissions")
+  const [error, setError] = useState<string | null>(null)
 
   // Media management states
   const [youtubeUrl, setYoutubeUrl] = useState("")
@@ -130,35 +109,46 @@ export function AdminPortal() {
 
   const fetchData = async () => {
     setLoading(true)
+    setError(null)
+    
     try {
       const [usersRes, submissionsRes, statsRes, mediaRes] = await Promise.all([
-        fetch("/api/admin/users"),
-        fetch("/api/admin/submissions"),
-        fetch("/api/admin/stats"),
-        fetch("/api/admin/media"),
+        fetch("/api/admin/users").catch(() => ({ ok: false, json: () => Promise.resolve({ error: "Failed to fetch users" }) })),
+        fetch("/api/admin/submissions").catch(() => ({ ok: false, json: () => Promise.resolve({ error: "Failed to fetch submissions" }) })),
+        fetch("/api/admin/stats").catch(() => ({ ok: false, json: () => Promise.resolve({ error: "Failed to fetch stats" }) })),
+        fetch("/api/admin/media").catch(() => ({ ok: false, json: () => Promise.resolve({ error: "Failed to fetch media" }) })),
       ])
 
       if (usersRes.ok) {
         const usersData = await usersRes.json()
-        setUsers(usersData.users || [])
+        if (usersData.success && usersData.users) {
+          setUsers(usersData.users)
+        }
       }
 
       if (submissionsRes.ok) {
         const submissionsData = await submissionsRes.json()
-        setSubmissions(submissionsData.submissions || [])
+        if (submissionsData.success && submissionsData.submissions) {
+          setSubmissions(submissionsData.submissions)
+        }
       }
 
       if (statsRes.ok) {
         const statsData = await statsRes.json()
-        setStats(statsData)
+        if (statsData.success) {
+          setStats(statsData)
+        }
       }
 
       if (mediaRes.ok) {
         const mediaData = await mediaRes.json()
-        setMedia(mediaData.media || [])
+        if (mediaData.success && mediaData.media) {
+          setMedia(mediaData.media)
+        }
       }
     } catch (error) {
       console.error("Error fetching admin data:", error)
+      setError("Failed to load admin data. Please try again.")
     } finally {
       setLoading(false)
     }
@@ -240,8 +230,23 @@ export function AdminPortal() {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <div className="text-center">
-          <RefreshCw className="h-8 w-8 animate-spin text-blue-500 mx-auto mb-4" />
+          <Loader2 className="h-8 w-8 animate-spin text-blue-500 mx-auto mb-4" />
           <p className="text-gray-300">Loading admin portal...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-red-500 mb-4">⚠️</div>
+          <p className="text-gray-300 mb-4">{error}</p>
+          <Button onClick={fetchData} className="bg-blue-600 hover:bg-blue-700">
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Retry
+          </Button>
         </div>
       </div>
     )
@@ -432,17 +437,7 @@ export function AdminPortal() {
                             </div>
                           </td>
                           <td className="p-3">
-                            <Badge
-                              className={`${
-                                submission.status === "approved"
-                                  ? "bg-green-500/20 text-green-400"
-                                  : submission.status === "pending"
-                                    ? "bg-yellow-500/20 text-yellow-400"
-                                    : submission.status === "in_review"
-                                      ? "bg-blue-500/20 text-blue-400"
-                                      : "bg-red-500/20 text-red-400"
-                              }`}
-                            >
+                            <Badge className={getStatusBadgeColor(submission.status)}>
                               {submission.status.replace("_", " ")}
                             </Badge>
                           </td>
@@ -457,7 +452,7 @@ export function AdminPortal() {
                             )}
                           </td>
                           <td className="p-3 text-gray-400 text-sm">
-                            {new Date(submission.submitted_at).toLocaleDateString()}
+                            {new Date(submission.created_at).toLocaleDateString()}
                           </td>
                           <td className="p-3">
                             <div className="flex space-x-2">
@@ -722,38 +717,43 @@ export function AdminPortal() {
                 <p className="text-gray-400 text-sm">Manage uploaded media files</p>
               </CardHeader>
               <CardContent>
-                {media.length === 0 ? (
+                {!media || media.totalFiles === 0 ? (
                   <div className="text-center py-12">
                     <Youtube className="h-12 w-12 text-gray-500 mx-auto mb-4" />
                     <p className="text-gray-400">No media files uploaded yet</p>
                     <p className="text-gray-500 text-sm">Upload your first video or audio file to get started</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {media.map((item) => (
-                      <div key={item.id} className="bg-gray-700 rounded-lg p-4">
-                        <div className="aspect-video bg-gray-600 rounded-lg mb-3 flex items-center justify-center">
-                          {item.type === "youtube" ? (
-                            <Youtube className="h-8 w-8 text-red-500" />
-                          ) : (
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center">
+                      <p className="text-gray-400">
+                        {media.totalFiles} files • {media.formattedSize}
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {media.files.map((file, index) => (
+                        <div key={index} className="bg-gray-700 rounded-lg p-4">
+                          <div className="aspect-video bg-gray-600 rounded-lg mb-3 flex items-center justify-center">
                             <Upload className="h-8 w-8 text-blue-500" />
-                          )}
+                          </div>
+                          <h4 className="text-white font-medium truncate">{file.name}</h4>
+                          <p className="text-gray-400 text-sm mt-1">
+                            {new Date(file.created_at || file.updated_at).toLocaleDateString()}
+                          </p>
+                          <div className="flex space-x-2 mt-3">
+                            <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white">
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white">
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="sm" className="text-gray-400 hover:text-red-400">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </div>
-                        <h4 className="text-white font-medium truncate">{item.title}</h4>
-                        <p className="text-gray-400 text-sm mt-1">{new Date(item.created_at).toLocaleDateString()}</p>
-                        <div className="flex space-x-2 mt-3">
-                          <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white">
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white">
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="sm" className="text-gray-400 hover:text-red-400">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 )}
               </CardContent>

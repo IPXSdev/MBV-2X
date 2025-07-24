@@ -1,94 +1,62 @@
--- Fix RLS policies for submissions
--- This script simplifies RLS and ensures proper permissions
+-- Fix RLS policies for submissions and user operations
+-- This script simplifies RLS policies to work with service role operations
 
--- First, disable RLS temporarily to clean up
-ALTER TABLE submissions DISABLE ROW LEVEL SECURITY;
-
--- Drop all existing policies
-DROP POLICY IF EXISTS "Users can view their own submissions" ON submissions;
+-- Drop existing problematic policies
+DROP POLICY IF EXISTS "Users can view own submissions" ON submissions;
 DROP POLICY IF EXISTS "Users can create submissions" ON submissions;
 DROP POLICY IF EXISTS "Admins can view all submissions" ON submissions;
 DROP POLICY IF EXISTS "Admins can update submissions" ON submissions;
-DROP POLICY IF EXISTS "Enable read access for authenticated users" ON submissions;
-DROP POLICY IF EXISTS "Enable insert for authenticated users" ON submissions;
-DROP POLICY IF EXISTS "Enable update for admins" ON submissions;
+DROP POLICY IF EXISTS "Users can view own profile" ON users;
+DROP POLICY IF EXISTS "Admins can view all users" ON users;
+DROP POLICY IF EXISTS "Admins can update users" ON users;
 
--- Re-enable RLS
+-- Create simplified RLS policies that work with service role
+CREATE POLICY "Enable all operations for service role" ON submissions
+  FOR ALL USING (true);
+
+CREATE POLICY "Enable all operations for service role on users" ON users
+  FOR ALL USING (true);
+
+-- Ensure RLS is enabled but allows service role operations
 ALTER TABLE submissions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_sessions ENABLE ROW LEVEL SECURITY;
 
--- Create simplified policies that work with our auth system
--- Allow service role to bypass RLS (for API operations)
-CREATE POLICY "Service role bypass" ON submissions
-  FOR ALL 
-  TO service_role
-  USING (true)
-  WITH CHECK (true);
+-- Create policy for user sessions
+DROP POLICY IF EXISTS "Enable all operations for service role on sessions" ON user_sessions;
+CREATE POLICY "Enable all operations for service role on sessions" ON user_sessions
+  FOR ALL USING (true);
 
--- Allow authenticated users to insert their own submissions
-CREATE POLICY "Users can create submissions" ON submissions
-  FOR INSERT 
-  TO authenticated
-  WITH CHECK (true);
+-- Grant necessary permissions to service role
+GRANT ALL ON submissions TO service_role;
+GRANT ALL ON users TO service_role;
+GRANT ALL ON user_sessions TO service_role;
 
--- Allow users to view their own submissions
-CREATE POLICY "Users can view own submissions" ON submissions
-  FOR SELECT 
-  TO authenticated
-  USING (true);
-
--- Allow admins to do everything
-CREATE POLICY "Admins full access" ON submissions
-  FOR ALL 
-  TO authenticated
-  USING (true)
-  WITH CHECK (true);
-
--- Ensure the audio-submissions bucket exists and has proper permissions
+-- Ensure storage bucket exists and has proper permissions
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES (
   'audio-submissions',
   'audio-submissions',
   true,
-  52428800, -- 50MB
+  52428800, -- 50MB limit
   ARRAY['audio/mpeg', 'audio/wav', 'audio/mp3', 'audio/m4a', 'audio/aac', 'audio/ogg']
 ) ON CONFLICT (id) DO UPDATE SET
-  public = EXCLUDED.public,
-  file_size_limit = EXCLUDED.file_size_limit,
-  allowed_mime_types = EXCLUDED.allowed_mime_types;
+  public = true,
+  file_size_limit = 52428800,
+  allowed_mime_types = ARRAY['audio/mpeg', 'audio/wav', 'audio/mp3', 'audio/m4a', 'audio/aac', 'audio/ogg'];
 
--- Set up storage policies for the bucket
-DROP POLICY IF EXISTS "Public read access" ON storage.objects;
-DROP POLICY IF EXISTS "Authenticated upload access" ON storage.objects;
+-- Create storage policy for audio submissions
+DROP POLICY IF EXISTS "Allow public read access" ON storage.objects;
+CREATE POLICY "Allow public read access" ON storage.objects
+  FOR SELECT USING (bucket_id = 'audio-submissions');
 
--- Allow public read access to audio files
-CREATE POLICY "Public read access" ON storage.objects
-  FOR SELECT
-  USING (bucket_id = 'audio-submissions');
+DROP POLICY IF EXISTS "Allow authenticated uploads" ON storage.objects;
+CREATE POLICY "Allow authenticated uploads" ON storage.objects
+  FOR INSERT WITH CHECK (bucket_id = 'audio-submissions');
 
--- Allow authenticated users to upload
-CREATE POLICY "Authenticated upload access" ON storage.objects
-  FOR INSERT
-  TO authenticated
-  WITH CHECK (bucket_id = 'audio-submissions');
+DROP POLICY IF EXISTS "Allow service role all operations" ON storage.objects;
+CREATE POLICY "Allow service role all operations" ON storage.objects
+  FOR ALL USING (true);
 
--- Allow users to update their own files
-CREATE POLICY "Users can update own files" ON storage.objects
-  FOR UPDATE
-  TO authenticated
-  USING (bucket_id = 'audio-submissions');
-
--- Allow service role full access to storage
-CREATE POLICY "Service role storage access" ON storage.objects
-  FOR ALL
-  TO service_role
-  USING (bucket_id = 'audio-submissions')
-  WITH CHECK (bucket_id = 'audio-submissions');
-
--- Grant necessary permissions
-GRANT ALL ON submissions TO service_role;
-GRANT SELECT, INSERT ON submissions TO authenticated;
-GRANT ALL ON storage.objects TO service_role;
-GRANT SELECT, INSERT, UPDATE ON storage.objects TO authenticated;
-
--- Refresh the schema cache
+-- Refresh schema cache
 NOTIFY pgrst, 'reload schema';

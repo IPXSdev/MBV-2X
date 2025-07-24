@@ -1,33 +1,28 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getCurrentUser } from "@/lib/supabase/auth"
-import { createClient } from "@supabase/supabase-js"
+import { getCurrentUser } from "@/lib/auth/session"
+import { createServiceClient } from "@/lib/supabase/server"
 
 export const dynamic = "force-dynamic"
 
 export async function GET(request: NextRequest) {
   try {
-    // Use custom auth system
     const user = await getCurrentUser()
 
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Check if user is admin or master dev
     if (user.role !== "admin" && user.role !== "master_dev") {
       return NextResponse.json({ error: "Forbidden - Admin access required" }, { status: 403 })
     }
 
-    // Use service client for database operations
-    const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+    const supabase = await createServiceClient()
 
-    // Get query parameters
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status")
     const limit = Number.parseInt(searchParams.get("limit") || "50")
     const offset = Number.parseInt(searchParams.get("offset") || "0")
 
-    // Build query
     let query = supabase
       .from("submissions")
       .select(`
@@ -42,7 +37,6 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1)
 
-    // Apply status filter if provided
     if (status && status !== "all") {
       query = query.eq("status", status)
     }
@@ -56,7 +50,7 @@ export async function GET(request: NextRequest) {
           error: "Failed to fetch submissions",
           details: submissionsError.message,
         },
-        { status: 500 },
+        { status: 500 }
       )
     }
 
@@ -90,7 +84,7 @@ export async function GET(request: NextRequest) {
         error: "Internal server error",
         details: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500 },
+      { status: 500 }
     )
   }
 }
