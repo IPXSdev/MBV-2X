@@ -1,67 +1,58 @@
-import { cookies } from "next/headers"
-import { supabase } from "./server"
+import type { NextRequest } from "next/server"
+import { createClient } from "@supabase/supabase-js"
+import type { User } from "@/lib/types"
 
-export async function requireAdmin(userId: string) {
-  const { data: user, error } = await supabase.from("users").select("role").eq("id", userId).single()
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-  if (error || !user) {
-    throw new Error("User not found")
-  }
-
-  if (user.role !== "admin" && user.role !== "master_dev") {
-    throw new Error("Admin access required")
-  }
-
-  return user
-}
-
-export async function requireMasterDev(userId: string) {
-  const { data: user, error } = await supabase.from("users").select("role").eq("id", userId).single()
-
-  if (error || !user) {
-    throw new Error("User not found")
-  }
-
-  if (user.role !== "master_dev") {
-    throw new Error("Master dev access required")
-  }
-
-  return user
-}
-
-export async function getUserRole(userId: string) {
-  const { data: user, error } = await supabase.from("users").select("role").eq("id", userId).single()
-
-  if (error || !user) {
-    return null
-  }
-
-  return user.role
-}
-
-export async function getCurrentUser() {
-  const cookieStore = cookies()
-  const sessionToken = cookieStore.get("session-token")?.value
+export async function getCurrentUser(request: NextRequest): Promise<User | null> {
+  const sessionToken = request.cookies.get("session-token")?.value
 
   if (!sessionToken) {
     return null
   }
 
-  const { data: session, error: sessionError } = await supabase
-    .from("user_sessions")
-    .select("user_id")
-    .eq("session_token", sessionToken)
-    .single()
+  try {
+    const { data: sessionData, error: sessionError } = await supabase
+      .from("user_sessions")
+      .select(
+        `
+        user_id,
+        expires_at,
+        users (
+          id,
+          email,
+          name,
+          role,
+          tier,
+          submission_credits,
+          is_verified,
+          legal_waiver_accepted,
+          compensation_type,
+          created_at,
+          updated_at
+        )
+      `,
+      )
+      .eq("session_token", sessionToken)
+      .single()
 
-  if (sessionError || !session) {
+    if (sessionError || !sessionData || !sessionData.users) {
+      return null
+    }
+
+    // Check if session is expired
+    if (new Date(sessionData.expires_at) < new Date()) {
+      // Clean up expired session
+      await supabase.from("user_sessions").delete().eq("session_token", sessionToken)
+      return null
+    }
+
+    const user = Array.isArray(sessionData.users) ? sessionData.users[0] : sessionData.users
+    return user as User
+  } catch (error) {
+    console.error("Error fetching user by session token:", error)
     return null
   }
-
-  const { data: user, error: userError } = await supabase.from("users").select("*").eq("id", session.user_id).single()
-
-  if (userError || !user) {
-    return null
-  }
-
-  return user
 }
