@@ -3,12 +3,19 @@ import { createClient } from "@supabase/supabase-js"
 import bcrypt from "bcryptjs"
 import { randomBytes } from "crypto"
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
-const supabase = createClient(supabaseUrl, supabaseServiceKey)
+export const dynamic = "force-dynamic"
 
 export async function POST(request: NextRequest) {
   try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error("Signup API Error: Server is missing Supabase environment variables.")
+      return NextResponse.json({ error: "Server configuration error. Please contact support." }, { status: 500 })
+    }
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
     const { email, password, name, artistName, primaryGenre, legalWaiverAccepted, subscribeToNewsletter } =
       await request.json()
     const normalizedEmail = email.toLowerCase().trim()
@@ -25,7 +32,16 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user already exists
-    const { data: existingUser } = await supabase.from("users").select("id").eq("email", normalizedEmail).single()
+    const { data: existingUser, error: existingUserError } = await supabase
+      .from("users")
+      .select("id")
+      .eq("email", normalizedEmail)
+      .single()
+
+    if (existingUserError && existingUserError.code !== "PGRST116") {
+      console.error("Signup API: DB error checking for existing user:", existingUserError)
+      return NextResponse.json({ error: "Database error. Please try again later." }, { status: 500 })
+    }
     if (existingUser) {
       return NextResponse.json({ error: "An account with this email already exists." }, { status: 409 })
     }
@@ -33,7 +49,6 @@ export async function POST(request: NextRequest) {
     const passwordHash = await bcrypt.hash(password, 10)
 
     // --- Create New User ---
-    // Aligned with the platform bible: new users are on the free 'creator' tier with 0 credits.
     const { data: newUser, error: createError } = await supabase
       .from("users")
       .insert({
@@ -43,18 +58,18 @@ export async function POST(request: NextRequest) {
         artist_name: artistName.trim(),
         primary_genre: primaryGenre.trim(),
         role: "user",
-        tier: "creator", // 'creator' is the free tier as per docs
-        submission_credits: 0, // Free tier starts with 0 credits
-        is_verified: true, // Auto-verified on signup
+        tier: "creator",
+        submission_credits: 0,
+        is_verified: true,
         legal_waiver_accepted: legalWaiverAccepted,
         subscribed_to_newsletter: subscribeToNewsletter,
       })
       .select()
       .single()
 
-    if (createError) {
-      console.error("Supabase user creation error:", createError)
-      throw createError
+    if (createError || !newUser) {
+      console.error("Signup API: Supabase user creation error:", createError)
+      return NextResponse.json({ error: "Could not create your account. Please try again." }, { status: 500 })
     }
 
     // --- Create Session ---
@@ -68,10 +83,13 @@ export async function POST(request: NextRequest) {
     })
 
     if (sessionError) {
-      console.error("Supabase session creation error:", sessionError)
-      // Note: In a production scenario, you might want to handle this more gracefully,
-      // perhaps by informing the user to try logging in.
-      throw new Error("Failed to create session after signup.")
+      console.error("Signup API: Supabase session creation error:", sessionError)
+      // The user was created, but the session wasn't. This is a degraded state.
+      // We should inform the user to try logging in.
+      return NextResponse.json(
+        { error: "Account created, but failed to log you in. Please try logging in manually." },
+        { status: 500 },
+      )
     }
 
     const response = NextResponse.json({
@@ -88,10 +106,14 @@ export async function POST(request: NextRequest) {
       path: "/",
     })
 
+    console.log(`Signup API: Successful signup for user ${newUser.id}.`)
     return response
   } catch (error) {
-    console.error("Signup API Error:", error)
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
-    return NextResponse.json({ error: "Internal server error", details: errorMessage }, { status: 500 })
+    console.error("Signup API: Unhandled exception:", error)
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
+    return NextResponse.json(
+      { error: "An unexpected internal server error occurred.", details: errorMessage },
+      { status: 500 },
+    )
   }
 }
