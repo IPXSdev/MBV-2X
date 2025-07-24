@@ -3,48 +3,31 @@ import type { User, CreateUserData } from "./types"
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
-export async function createUser(userData: CreateUserData & { passwordHash: string }): Promise<User> {
-  const { data, error } = await supabase
-    .from("users")
-    .insert({
-      email: userData.email.toLowerCase().trim(),
-      name: userData.name.trim(),
-      password_hash: userData.passwordHash,
-      role: "user",
-      tier: "creator",
-      submission_credits: 0,
-      is_verified: true,
-    })
-    .select()
-    .single()
-
-  if (error) {
-    console.error("❌ Database error creating user:", error)
-    throw new Error(`Failed to create user: ${error.message}`)
-  }
-
-  return {
-    id: data.id,
-    email: data.email,
-    name: data.name,
-    role: data.role,
-    tier: data.tier,
-    submission_credits: data.submission_credits,
-    is_verified: data.is_verified,
-    created_at: data.created_at,
-    updated_at: data.updated_at,
-  }
-}
-
-export async function getUserByEmail(email: string): Promise<User | null> {
+export async function createUser(
+  userData: CreateUserData & {
+    passwordHash: string
+    role?: "user" | "admin" | "master_dev"
+    tier?: "creator" | "indie" | "pro"
+    submission_credits?: number
+  },
+): Promise<User | null> {
   try {
-    const { data, error } = await supabase.from("users").select("*").eq("email", email.toLowerCase().trim()).single()
+    const { data, error } = await supabase
+      .from("users")
+      .insert({
+        email: userData.email.toLowerCase().trim(),
+        name: userData.name.trim(),
+        password_hash: userData.passwordHash,
+        role: userData.role || "user",
+        tier: userData.tier || "creator",
+        submission_credits: userData.submission_credits ?? 3,
+        is_verified: true,
+      })
+      .select()
+      .single()
 
     if (error) {
-      if (error.code === "PGRST116") {
-        return null // User not found
-      }
-      console.error("❌ Database error getting user by email:", error)
+      console.error("❌ Database error creating user:", error)
       return null
     }
 
@@ -60,7 +43,26 @@ export async function getUserByEmail(email: string): Promise<User | null> {
       updated_at: data.updated_at,
     }
   } catch (error) {
-    console.error("❌ Error getting user by email:", error)
+    console.error("❌ Exception during user creation:", error)
+    return null
+  }
+}
+
+export async function getUserByEmail(email: string): Promise<User | null> {
+  try {
+    const { data, error } = await supabase.from("users").select("*").eq("email", email.toLowerCase().trim()).single()
+
+    if (error) {
+      if (error.code === "PGRST116") {
+        return null // User not found, which is not an error in this context.
+      }
+      console.error("❌ Database error getting user by email:", error)
+      return null
+    }
+
+    return data
+  } catch (error) {
+    console.error("❌ Exception getting user by email:", error)
     return null
   }
 }
@@ -79,7 +81,7 @@ export async function getUserPasswordHash(email: string): Promise<string | null>
 
     return data.password_hash
   } catch (error) {
-    console.error("❌ Error getting password hash:", error)
+    console.error("❌ Exception getting password hash:", error)
     return null
   }
 }
@@ -103,7 +105,8 @@ export async function getUserBySessionToken(sessionToken: string): Promise<User 
   try {
     const { data, error } = await supabase
       .from("user_sessions")
-      .select(`
+      .select(
+        `
         user_id,
         expires_at,
         users (
@@ -114,10 +117,13 @@ export async function getUserBySessionToken(sessionToken: string): Promise<User 
           tier,
           submission_credits,
           is_verified,
+          legal_waiver_accepted,
+          compensation_type,
           created_at,
           updated_at
         )
-      `)
+      `,
+      )
       .eq("session_token", sessionToken)
       .single()
 
@@ -125,27 +131,14 @@ export async function getUserBySessionToken(sessionToken: string): Promise<User 
       return null
     }
 
-    // Check if session is expired
     if (new Date(data.expires_at) < new Date()) {
       await deleteUserSession(sessionToken)
       return null
     }
 
-    const user = Array.isArray(data.users) ? data.users[0] : data.users
-
-    return {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      tier: user.tier,
-      submission_credits: user.submission_credits,
-      is_verified: user.is_verified,
-      created_at: user.created_at,
-      updated_at: user.updated_at,
-    }
+    return Array.isArray(data.users) ? data.users[0] : data.users
   } catch (error) {
-    console.error("❌ Error getting user by session token:", error)
+    console.error("❌ Exception getting user by session token:", error)
     return null
   }
 }
