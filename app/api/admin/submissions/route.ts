@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getCurrentUser } from "@/lib/auth"
+import { getCurrentUser } from "@/lib/supabase/auth"
 import { createClient } from "@supabase/supabase-js"
 
 export const dynamic = "force-dynamic"
@@ -24,10 +24,8 @@ export async function GET(request: NextRequest) {
     // Get query parameters
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status")
-    const filter = searchParams.get("filter") || "all"
-    const page = parseInt(searchParams.get("page") || "1")
-    const limit = parseInt(searchParams.get("limit") || "20")
-    const offset = (page - 1) * limit
+    const limit = Number.parseInt(searchParams.get("limit") || "50")
+    const offset = Number.parseInt(searchParams.get("offset") || "0")
 
     // Build query
     let query = supabase
@@ -47,15 +45,6 @@ export async function GET(request: NextRequest) {
     // Apply status filter if provided
     if (status && status !== "all") {
       query = query.eq("status", status)
-    }
-
-    // Apply rating filter
-    if (filter === "ranked") {
-      query = query.not("admin_rating", "is", null)
-    } else if (filter === "unranked") {
-      query = query.is("admin_rating", null)
-    } else if (filter === "my_ranked") {
-      query = query.eq("reviewed_by", user.id).not("admin_rating", "is", null)
     }
 
     const { data: submissions, error: submissionsError } = await query
@@ -78,31 +67,20 @@ export async function GET(request: NextRequest) {
       countQuery = countQuery.eq("status", status)
     }
 
-    if (filter === "ranked") {
-      countQuery = countQuery.not("admin_rating", "is", null)
-    } else if (filter === "unranked") {
-      countQuery = countQuery.is("admin_rating", null)
-    } else if (filter === "my_ranked") {
-      countQuery = countQuery.eq("reviewed_by", user.id).not("admin_rating", "is", null)
-    }
-
     const { count, error: countError } = await countQuery
 
     if (countError) {
       console.error("Error getting submissions count:", countError)
     }
 
-    const totalPages = Math.ceil((count || 0) / limit)
-
     return NextResponse.json({
       success: true,
       submissions: submissions || [],
       pagination: {
         total: count || 0,
-        page,
         limit,
-        totalPages,
-        hasMore: page < totalPages,
+        offset,
+        hasMore: (count || 0) > offset + limit,
       },
     })
   } catch (error) {

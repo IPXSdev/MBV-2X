@@ -1,389 +1,457 @@
-'use client'
+"use client"
 
-import { useState, useRef } from 'react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Progress } from '@/components/ui/progress'
-import { EnhancedAudioPlayer } from '@/components/ui/enhanced-audio-player'
-import { Upload, Music, CheckCircle, AlertCircle } from 'lucide-react'
+import type React from "react"
 
-const MOOD_TAGS = [
-  'Energetic', 'Chill', 'Dark', 'Uplifting', 'Aggressive', 'Romantic',
-  'Melancholic', 'Party', 'Introspective', 'Confident', 'Dreamy', 'Raw'
+import { useState, useRef } from "react"
+import { useAuth } from "@/components/auth/auth-provider"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { EnhancedAudioPlayer } from "@/components/ui/enhanced-audio-player"
+import { Upload, Music, X, AlertCircle, CheckCircle } from "lucide-react"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { useRouter } from "next/navigation"
+
+const GENRES = [
+  "Hip Hop",
+  "R&B",
+  "Pop",
+  "Rock",
+  "Electronic",
+  "Jazz",
+  "Blues",
+  "Country",
+  "Folk",
+  "Classical",
+  "Reggae",
+  "Funk",
+  "Soul",
+  "Alternative",
+  "Indie",
+  "Other",
 ]
 
-const GENRE_OPTIONS = [
-  'Hip Hop', 'R&B', 'Pop', 'Rock', 'Electronic', 'Jazz', 'Blues', 'Country', 'Other'
+const MOOD_TAGS = [
+  "Energetic",
+  "Chill",
+  "Dark",
+  "Uplifting",
+  "Melancholic",
+  "Aggressive",
+  "Romantic",
+  "Mysterious",
+  "Nostalgic",
+  "Triumphant",
+  "Dreamy",
+  "Intense",
+  "Playful",
+  "Emotional",
+  "Atmospheric",
 ]
 
 export default function SubmitPage() {
-  const [formData, setFormData] = useState({
-    title: '',
-    artist: '',
-    genre: '',
-    description: '',
-    mood_tags: [] as string[],
-    contact_email: '',
-    contact_phone: '',
-    social_media: ''
-  })
-  
-  const [audioFile, setAudioFile] = useState<File | null>(null)
-  const [audioPreview, setAudioPreview] = useState<string | null>(null)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [uploadProgress, setUploadProgress] = useState(0)
-  const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle')
-  const [errorMessage, setErrorMessage] = useState('')
-  
+  const { user, loading } = useAuth()
+  const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value } = e.target
-    setFormData(prev => ({ ...prev, [name]: value }))
+  const [formData, setFormData] = useState({
+    track_title: "",
+    artist_name: "",
+    genre: "",
+    description: "",
+  })
+
+  const [selectedMoodTags, setSelectedMoodTags] = useState<string[]>([])
+  const [audioFile, setAudioFile] = useState<File | null>(null)
+  const [audioUrl, setAudioUrl] = useState<string | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
+
+  // Redirect if not authenticated
+  if (!loading && !user) {
+    router.push("/login")
+    return null
   }
 
-  const handleMoodToggle = (mood: string) => {
-    setFormData(prev => ({
-      ...prev,
-      mood_tags: prev.mood_tags.includes(mood)
-        ? prev.mood_tags.filter(tag => tag !== mood)
-        : [...prev.mood_tags, mood]
-    }))
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    )
   }
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      // Validate file type
-      const validTypes = ['audio/mpeg', 'audio/wav', 'audio/mp3', 'audio/m4a', 'audio/aac']
-      if (!validTypes.includes(file.type)) {
-        setErrorMessage('Please upload a valid audio file (MP3, WAV, M4A, AAC)')
-        return
+  const handleInputChange = (field: string, value: string) => {
+    setFormData((prev) => ({ ...prev, [field]: value }))
+    setError(null)
+  }
+
+  const handleMoodTagToggle = (tag: string) => {
+    setSelectedMoodTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag].slice(0, 5)))
+  }
+
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    if (!file.type.startsWith("audio/")) {
+      setError("Please select a valid audio file")
+      return
+    }
+
+    // Validate file size (50MB limit)
+    if (file.size > 50 * 1024 * 1024) {
+      setError("File size must be less than 50MB")
+      return
+    }
+
+    setAudioFile(file)
+    setError(null)
+
+    // Create preview URL
+    const url = URL.createObjectURL(file)
+    setAudioUrl(url)
+  }
+
+  const uploadToSupabase = async (file: File): Promise<string> => {
+    try {
+      setIsUploading(true)
+      setUploadProgress(0)
+
+      // Create a unique filename
+      const timestamp = Date.now()
+      const randomString = Math.random().toString(36).substring(2, 15)
+      const fileExtension = file.name.split(".").pop()
+      const fileName = `${user?.id}_${timestamp}_${randomString}.${fileExtension}`
+
+      // Use the service client for upload
+      const { createClient } = await import("@supabase/supabase-js")
+      const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+
+      const { data, error } = await supabase.storage.from("audio-submissions").upload(fileName, file, {
+        cacheControl: "3600",
+        upsert: false,
+      })
+
+      if (error) {
+        console.error("Upload error:", error)
+        throw new Error(`Upload failed: ${error.message}`)
       }
 
-      // Validate file size (50MB limit)
-      if (file.size > 50 * 1024 * 1024) {
-        setErrorMessage('File size must be less than 50MB')
-        return
-      }
+      // Get public URL
+      const { data: urlData } = supabase.storage.from("audio-submissions").getPublicUrl(data.path)
 
-      setAudioFile(file)
-      setAudioPreview(URL.createObjectURL(file))
-      setErrorMessage('')
+      setUploadProgress(100)
+      return urlData.publicUrl
+    } catch (error) {
+      console.error("Upload error:", error)
+      throw error
+    } finally {
+      setIsUploading(false)
     }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+    setError(null)
+    setSuccess(null)
+
+    // Validation
+    if (!formData.track_title.trim()) {
+      setError("Track title is required")
+      return
+    }
+
+    if (!formData.artist_name.trim()) {
+      setError("Artist name is required")
+      return
+    }
+
+    if (!formData.genre) {
+      setError("Genre is required")
+      return
+    }
+
     if (!audioFile) {
-      setErrorMessage('Please select an audio file')
+      setError("Please select an audio file")
       return
     }
 
-    if (!formData.title || !formData.artist || !formData.contact_email) {
-      setErrorMessage('Please fill in all required fields')
+    if (user?.role !== "master_dev" && (user?.submission_credits || 0) <= 0) {
+      setError("You don't have any submission credits remaining")
       return
     }
-
-    setIsSubmitting(true)
-    setUploadProgress(0)
-    setSubmitStatus('idle')
-    setErrorMessage('')
 
     try {
-      const submitFormData = new FormData()
-      submitFormData.append('audio_file', audioFile)
-      submitFormData.append('title', formData.title)
-      submitFormData.append('artist', formData.artist)
-      submitFormData.append('genre', formData.genre)
-      submitFormData.append('description', formData.description)
-      submitFormData.append('mood_tags', JSON.stringify(formData.mood_tags))
-      submitFormData.append('contact_email', formData.contact_email)
-      submitFormData.append('contact_phone', formData.contact_phone)
-      submitFormData.append('social_media', formData.social_media)
+      setIsSubmitting(true)
 
-      const response = await fetch('/api/submissions/create', {
-        method: 'POST',
-        body: submitFormData,
+      // Upload file first
+      const fileUrl = await uploadToSupabase(audioFile)
+
+      // Create submission
+      const response = await fetch("/api/submissions/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          track_title: formData.track_title.trim(),
+          artist_name: formData.artist_name.trim(),
+          genre: formData.genre,
+          mood_tags: selectedMoodTags,
+          description: formData.description.trim(),
+          file_url: fileUrl,
+          file_size: Math.round((audioFile.size / 1024 / 1024) * 100) / 100, // MB with 2 decimal places
+          duration: 0, // Will be calculated on the backend if needed
+        }),
       })
 
       const result = await response.json()
 
       if (!response.ok) {
-        throw new Error(result.error || 'Submission failed')
+        throw new Error(result.error || "Failed to submit track")
       }
 
-      setSubmitStatus('success')
-      setUploadProgress(100)
-      
+      setSuccess("Track submitted successfully! You can view your submissions in your dashboard.")
+
       // Reset form
       setFormData({
-        title: '',
-        artist: '',
-        genre: '',
-        description: '',
-        mood_tags: [],
-        contact_email: '',
-        contact_phone: '',
-        social_media: ''
+        track_title: "",
+        artist_name: "",
+        genre: "",
+        description: "",
       })
+      setSelectedMoodTags([])
       setAudioFile(null)
-      setAudioPreview(null)
+      setAudioUrl(null)
       if (fileInputRef.current) {
-        fileInputRef.current.value = ''
+        fileInputRef.current.value = ""
       }
 
+      // Redirect to submissions page after a delay
+      setTimeout(() => {
+        router.push("/submissions")
+      }, 2000)
     } catch (error) {
-      console.error('Submission error:', error)
-      setSubmitStatus('error')
-      setErrorMessage(error instanceof Error ? error.message : 'An unexpected error occurred')
+      console.error("Submission error:", error)
+      setError(error instanceof Error ? error.message : "Failed to submit track")
     } finally {
       setIsSubmitting(false)
     }
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 py-12 px-4">
-      <div className="max-w-2xl mx-auto">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-white mb-4">Submit Your Track</h1>
-          <p className="text-gray-300">
-            Share your music with our team for potential placement opportunities
-          </p>
-        </div>
-
-        <Card className="bg-white/10 backdrop-blur-md border-white/20">
-          <CardHeader>
-            <CardTitle className="text-white flex items-center gap-2">
-              <Music className="w-5 h-5" />
-              Track Submission
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 py-8">
+      <div className="max-w-2xl mx-auto px-4">
+        <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm">
+          <CardHeader className="text-center pb-6">
+            <div className="mx-auto w-16 h-16 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full flex items-center justify-center mb-4">
+              <Music className="w-8 h-8 text-white" />
+            </div>
+            <CardTitle className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+              Submit Your Track
             </CardTitle>
+            <CardDescription className="text-lg text-gray-600">
+              Share your music with industry professionals
+            </CardDescription>
+            {user && user.role !== "master_dev" && (
+              <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+                <p className="text-sm text-blue-800">
+                  <strong>Submission Credits:</strong> {user.submission_credits || 0} remaining
+                </p>
+              </div>
+            )}
           </CardHeader>
-          <CardContent>
+
+          <CardContent className="space-y-6">
+            {error && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+
+            {success && (
+              <Alert className="border-green-200 bg-green-50">
+                <CheckCircle className="h-4 w-4 text-green-600" />
+                <AlertDescription className="text-green-800">{success}</AlertDescription>
+              </Alert>
+            )}
+
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Audio File Upload */}
               <div className="space-y-2">
-                <Label htmlFor="audio_file" className="text-white">
+                <Label htmlFor="audio-file" className="text-sm font-medium text-gray-700">
                   Audio File *
                 </Label>
-                <div className="border-2 border-dashed border-white/30 rounded-lg p-6 text-center">
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-purple-400 transition-colors">
                   <input
                     ref={fileInputRef}
+                    id="audio-file"
                     type="file"
-                    id="audio_file"
                     accept="audio/*"
-                    onChange={handleFileChange}
+                    onChange={handleFileSelect}
                     className="hidden"
+                    disabled={isUploading || isSubmitting}
                   />
                   <Button
                     type="button"
                     variant="outline"
                     onClick={() => fileInputRef.current?.click()}
-                    className="bg-white/10 border-white/30 text-white hover:bg-white/20"
+                    disabled={isUploading || isSubmitting}
+                    className="mb-2"
                   >
                     <Upload className="w-4 h-4 mr-2" />
                     Choose Audio File
                   </Button>
-                  <p className="text-sm text-gray-300 mt-2">
-                    MP3, WAV, M4A, AAC (Max 50MB)
-                  </p>
+                  <p className="text-sm text-gray-500">Supported formats: MP3, WAV, FLAC, M4A (Max 50MB)</p>
                   {audioFile && (
-                    <p className="text-sm text-green-300 mt-2">
-                      Selected: {audioFile.name}
+                    <p className="text-sm text-green-600 mt-2">
+                      Selected: {audioFile.name} ({Math.round((audioFile.size / 1024 / 1024) * 100) / 100} MB)
                     </p>
                   )}
                 </div>
               </div>
 
               {/* Audio Preview */}
-              {audioPreview && (
+              {audioUrl && (
                 <div className="space-y-2">
-                  <Label className="text-white">Preview</Label>
+                  <Label className="text-sm font-medium text-gray-700">Preview</Label>
                   <EnhancedAudioPlayer
-                    src={audioPreview}
-                    title={formData.title || 'Untitled'}
-                    artist={formData.artist || 'Unknown Artist'}
+                    src={audioUrl}
+                    title={formData.track_title || "Untitled Track"}
+                    artist={formData.artist_name || "Unknown Artist"}
                   />
                 </div>
               )}
 
-              {/* Track Information */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Upload Progress */}
+              {isUploading && (
                 <div className="space-y-2">
-                  <Label htmlFor="title" className="text-white">
-                    Track Title *
-                  </Label>
-                  <Input
-                    id="title"
-                    name="title"
-                    value={formData.title}
-                    onChange={handleInputChange}
-                    className="bg-white/10 border-white/30 text-white placeholder:text-gray-400"
-                    placeholder="Enter track title"
-                    required
-                  />
+                  <div className="flex justify-between text-sm">
+                    <span>Uploading...</span>
+                    <span>{uploadProgress}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-purple-600 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="artist" className="text-white">
-                    Artist Name *
-                  </Label>
-                  <Input
-                    id="artist"
-                    name="artist"
-                    value={formData.artist}
-                    onChange={handleInputChange}
-                    className="bg-white/10 border-white/30 text-white placeholder:text-gray-400"
-                    placeholder="Enter artist name"
-                    required
-                  />
-                </div>
-              </div>
+              )}
 
+              {/* Track Title */}
               <div className="space-y-2">
-                <Label htmlFor="genre" className="text-white">
-                  Genre
+                <Label htmlFor="track-title" className="text-sm font-medium text-gray-700">
+                  Track Title *
                 </Label>
-                <select
-                  id="genre"
-                  name="genre"
-                  value={formData.genre}
-                  onChange={handleInputChange}
-                  className="w-full px-3 py-2 bg-white/10 border border-white/30 rounded-md text-white"
-                >
-                  <option value="">Select a genre</option>
-                  {GENRE_OPTIONS.map(genre => (
-                    <option key={genre} value={genre} className="text-black">
-                      {genre}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="description" className="text-white">
-                  Description
-                </Label>
-                <Textarea
-                  id="description"
-                  name="description"
-                  value={formData.description}
-                  onChange={handleInputChange}
-                  className="bg-white/10 border-white/30 text-white placeholder:text-gray-400"
-                  placeholder="Tell us about your track..."
-                  rows={3}
+                <Input
+                  id="track-title"
+                  value={formData.track_title}
+                  onChange={(e) => handleInputChange("track_title", e.target.value)}
+                  placeholder="Enter track title"
+                  disabled={isSubmitting}
+                  className="border-gray-300 focus:border-purple-500 focus:ring-purple-500"
                 />
+              </div>
+
+              {/* Artist Name */}
+              <div className="space-y-2">
+                <Label htmlFor="artist-name" className="text-sm font-medium text-gray-700">
+                  Artist Name *
+                </Label>
+                <Input
+                  id="artist-name"
+                  value={formData.artist_name}
+                  onChange={(e) => handleInputChange("artist_name", e.target.value)}
+                  placeholder="Enter artist name"
+                  disabled={isSubmitting}
+                  className="border-gray-300 focus:border-purple-500 focus:ring-purple-500"
+                />
+              </div>
+
+              {/* Genre */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-gray-700">Genre *</Label>
+                <Select value={formData.genre} onValueChange={(value) => handleInputChange("genre", value)}>
+                  <SelectTrigger className="border-gray-300 focus:border-purple-500 focus:ring-purple-500">
+                    <SelectValue placeholder="Select genre" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {GENRES.map((genre) => (
+                      <SelectItem key={genre} value={genre}>
+                        {genre}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Mood Tags */}
               <div className="space-y-2">
-                <Label className="text-white">Mood Tags</Label>
+                <Label className="text-sm font-medium text-gray-700">Mood Tags (Select up to 5)</Label>
                 <div className="flex flex-wrap gap-2">
-                  {MOOD_TAGS.map(mood => (
+                  {MOOD_TAGS.map((tag) => (
                     <Badge
-                      key={mood}
-                      variant={formData.mood_tags.includes(mood) ? "default" : "outline"}
-                      className={`cursor-pointer transition-colors ${
-                        formData.mood_tags.includes(mood)
-                          ? 'bg-purple-600 text-white'
-                          : 'bg-white/10 text-white border-white/30 hover:bg-white/20'
+                      key={tag}
+                      variant={selectedMoodTags.includes(tag) ? "default" : "outline"}
+                      className={`cursor-pointer transition-all ${
+                        selectedMoodTags.includes(tag)
+                          ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white"
+                          : "hover:bg-purple-50 hover:border-purple-300"
                       }`}
-                      onClick={() => handleMoodToggle(mood)}
+                      onClick={() => handleMoodTagToggle(tag)}
                     >
-                      {mood}
+                      {tag}
+                      {selectedMoodTags.includes(tag) && <X className="w-3 h-3 ml-1" />}
                     </Badge>
                   ))}
                 </div>
+                <p className="text-xs text-gray-500">Selected: {selectedMoodTags.length}/5</p>
               </div>
 
-              {/* Contact Information */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-white">Contact Information</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="contact_email" className="text-white">
-                      Email *
-                    </Label>
-                    <Input
-                      id="contact_email"
-                      name="contact_email"
-                      type="email"
-                      value={formData.contact_email}
-                      onChange={handleInputChange}
-                      className="bg-white/10 border-white/30 text-white placeholder:text-gray-400"
-                      placeholder="your@email.com"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="contact_phone" className="text-white">
-                      Phone
-                    </Label>
-                    <Input
-                      id="contact_phone"
-                      name="contact_phone"
-                      type="tel"
-                      value={formData.contact_phone}
-                      onChange={handleInputChange}
-                      className="bg-white/10 border-white/30 text-white placeholder:text-gray-400"
-                      placeholder="(555) 123-4567"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="social_media" className="text-white">
-                    Social Media
-                  </Label>
-                  <Input
-                    id="social_media"
-                    name="social_media"
-                    value={formData.social_media}
-                    onChange={handleInputChange}
-                    className="bg-white/10 border-white/30 text-white placeholder:text-gray-400"
-                    placeholder="@username or profile URL"
-                  />
-                </div>
+              {/* Description */}
+              <div className="space-y-2">
+                <Label htmlFor="description" className="text-sm font-medium text-gray-700">
+                  Description (Optional)
+                </Label>
+                <Textarea
+                  id="description"
+                  value={formData.description}
+                  onChange={(e) => handleInputChange("description", e.target.value)}
+                  placeholder="Tell us about your track..."
+                  rows={4}
+                  disabled={isSubmitting}
+                  className="border-gray-300 focus:border-purple-500 focus:ring-purple-500"
+                />
               </div>
-
-              {/* Upload Progress */}
-              {isSubmitting && (
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm text-white">
-                    <span>Uploading...</span>
-                    <span>{uploadProgress}%</span>
-                  </div>
-                  <Progress value={uploadProgress} className="w-full" />
-                </div>
-              )}
-
-              {/* Status Messages */}
-              {submitStatus === 'success' && (
-                <div className="flex items-center gap-2 p-4 bg-green-500/20 border border-green-500/30 rounded-lg">
-                  <CheckCircle className="w-5 h-5 text-green-400" />
-                  <span className="text-green-300">
-                    Track submitted successfully! We'll review it and get back to you.
-                  </span>
-                </div>
-              )}
-
-              {(submitStatus === 'error' || errorMessage) && (
-                <div className="flex items-center gap-2 p-4 bg-red-500/20 border border-red-500/30 rounded-lg">
-                  <AlertCircle className="w-5 h-5 text-red-400" />
-                  <span className="text-red-300">{errorMessage}</span>
-                </div>
-              )}
 
               {/* Submit Button */}
               <Button
                 type="submit"
-                disabled={isSubmitting || !audioFile}
-                className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold py-3"
+                disabled={isSubmitting || isUploading || !audioFile}
+                className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold py-3 rounded-lg transition-all duration-200 transform hover:scale-105"
               >
-                {isSubmitting ? 'Submitting...' : 'Submit Track'}
+                {isSubmitting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                    Submitting Track...
+                  </>
+                ) : (
+                  "Submit Track"
+                )}
               </Button>
             </form>
           </CardContent>

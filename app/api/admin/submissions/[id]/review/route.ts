@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getCurrentUser } from "@/lib/auth"
+import { getCurrentUser } from "@/lib/supabase/auth"
 import { createClient } from "@supabase/supabase-js"
 
 export const dynamic = "force-dynamic"
@@ -20,14 +20,14 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     const { id } = params
     const body = await request.json()
-    const { status, feedback, rating, mood_tags } = body
+    const { status, feedback, rating } = body
 
     // Validate required fields
-    if (!status || !["approved", "rejected", "pending", "in_review"].includes(status)) {
+    if (!status || !["approved", "rejected", "pending"].includes(status)) {
       return NextResponse.json(
         {
           error: "Invalid status",
-          message: "Status must be 'approved', 'rejected', 'pending', or 'in_review'",
+          message: "Status must be 'approved', 'rejected', or 'pending'",
         },
         { status: 400 },
       )
@@ -41,9 +41,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       .from("submissions")
       .update({
         status,
-        admin_feedback: feedback || null,
-        admin_rating: rating || null,
-        mood_tags: mood_tags || null,
+        feedback: feedback || null,
+        rating: rating || null,
         reviewed_by: user.id,
         reviewed_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
