@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState, type ReactNode } from "react"
+import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
 
 interface User {
   id: string
@@ -9,24 +9,64 @@ interface User {
   role: string
   tier?: string
   submission_credits?: number
+  legal_waiver_accepted?: boolean
+  compensation_type?: string
 }
 
 interface AuthContextType {
   user: User | null
   loading: boolean
+  isLoading: boolean
   error: string | null
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
   signup: (email: string, password: string, name: string) => Promise<{ success: boolean; error?: string }>
   logout: () => Promise<void>
-  checkAuth: () => Promise<void>
+  refreshUser: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  const fetchUser = async () => {
+    try {
+      setError(null)
+      const response = await fetch("/api/auth/me", {
+        credentials: "include",
+        cache: "no-store",
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success && data.user) {
+          console.log("User loaded:", data.user)
+          setUser(data.user)
+        } else {
+          setUser(null)
+        }
+      } else {
+        setUser(null)
+      }
+    } catch (err) {
+      console.error("Auth error:", err)
+      setError("Failed to load user")
+      setUser(null)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const refreshUser = async () => {
+    setLoading(true)
+    await fetchUser()
+  }
+
+  useEffect(() => {
+    fetchUser()
+  }, [])
 
   const checkAuth = async () => {
     setLoading(true)
@@ -266,11 +306,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  return (
-    <AuthContext.Provider value={{ user, loading, error, login, signup, logout, checkAuth }}>
-      {children}
-    </AuthContext.Provider>
-  )
+  const value: AuthContextType = {
+    user,
+    loading,
+    isLoading: loading,
+    error,
+    login,
+    signup,
+    logout,
+    refreshUser,
+  }
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {

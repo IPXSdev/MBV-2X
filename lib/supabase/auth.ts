@@ -11,59 +11,51 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey, {
   },
 })
 
-export async function getCurrentUser() {
+export interface User {
+  id: string
+  email: string
+  name: string
+  role: string
+  tier: string
+  submission_credits: number
+  legal_waiver_accepted: boolean
+  compensation_type: string
+  created_at: string
+  updated_at: string
+}
+
+export async function getCurrentUser(): Promise<User | null> {
   try {
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
     const sessionToken = cookieStore.get("session-token")?.value
 
     if (!sessionToken) {
       return null
     }
 
-    // Get user from session token
-    const { data, error } = await supabase
+    // Look up the session in the database
+    const { data: session, error: sessionError } = await supabase
       .from("user_sessions")
-      .select(`
-        user_id,
-        expires_at,
-        users (
-          id,
-          email,
-          name,
-          role,
-          tier,
-          submission_credits,
-          is_verified,
-          created_at,
-          updated_at
-        )
-      `)
+      .select("*, users(*)")
       .eq("session_token", sessionToken)
+      .gt("expires_at", new Date().toISOString())
       .single()
 
-    if (error || !data || !data.users) {
+    if (sessionError || !session) {
       return null
     }
-
-    // Check if session is expired
-    if (new Date(data.expires_at) < new Date()) {
-      // Clean up expired session
-      await supabase.from("user_sessions").delete().eq("session_token", sessionToken)
-      return null
-    }
-
-    const user = Array.isArray(data.users) ? data.users[0] : data.users
 
     return {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      tier: user.tier,
-      submission_credits: user.submission_credits,
-      is_verified: user.is_verified,
-      created_at: user.created_at,
-      updated_at: user.updated_at,
+      id: session.users.id,
+      email: session.users.email,
+      name: session.users.name,
+      role: session.users.role,
+      tier: session.users.tier,
+      submission_credits: session.users.submission_credits,
+      legal_waiver_accepted: session.users.legal_waiver_accepted,
+      compensation_type: session.users.compensation_type,
+      created_at: session.users.created_at,
+      updated_at: session.users.updated_at,
     }
   } catch (error) {
     console.error("Error getting current user:", error)
@@ -71,40 +63,26 @@ export async function getCurrentUser() {
   }
 }
 
-export async function requireAuth() {
+export async function requireAuth(): Promise<User> {
   const user = await getCurrentUser()
-
   if (!user) {
     throw new Error("Authentication required")
   }
-
   return user
 }
 
-export async function requireAdmin() {
-  const user = await getCurrentUser()
-
-  if (!user) {
-    throw new Error("Authentication required")
-  }
-
+export async function requireAdmin(): Promise<User> {
+  const user = await requireAuth()
   if (user.role !== "admin" && user.role !== "master_dev") {
     throw new Error("Admin access required")
   }
-
   return user
 }
 
-export async function requireMasterDev() {
-  const user = await getCurrentUser()
-
-  if (!user) {
-    throw new Error("Authentication required")
-  }
-
+export async function requireMasterDev(): Promise<User> {
+  const user = await requireAuth()
   if (user.role !== "master_dev") {
-    throw new Error("Master developer access required")
+    throw new Error("Master dev access required")
   }
-
   return user
 }

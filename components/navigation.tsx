@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { useState } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -12,10 +14,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useAuth } from "./auth/auth-provider"
+import { useRouter } from "next/navigation"
 
 export function Navigation() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const { user, isLoading, error } = useAuth()
+  const router = useRouter()
 
   const navLinks = [
     { href: "/", label: "Home" },
@@ -35,6 +39,30 @@ export function Navigation() {
       console.error("Logout failed:", error)
       // Fallback logout
       document.location.href = "/"
+    }
+  }
+
+  const handleAdminPortalClick = (e: React.MouseEvent) => {
+    e.preventDefault()
+    console.log("Admin portal clicked, user:", user)
+    if (user && (user.role === "admin" || user.role === "master_dev")) {
+      router.push("/admin")
+    } else {
+      console.warn("User does not have admin access")
+    }
+  }
+
+  const handleSubmitClick = (e: React.MouseEvent) => {
+    e.preventDefault()
+    console.log("Submit clicked, user:", user)
+    if (user) {
+      if (user.role === "admin" || user.role === "master_dev") {
+        alert("Admins cannot submit tracks. Please use a regular user account.")
+        return
+      }
+      router.push("/submit")
+    } else {
+      router.push("/login?redirect=/submit")
     }
   }
 
@@ -59,15 +87,28 @@ export function Navigation() {
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-8">
-            {navLinks.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className="text-gray-300 hover:text-white transition-colors duration-200 font-medium"
-              >
-                {link.label}
-              </Link>
-            ))}
+            {navLinks.map((link) => {
+              if (link.href === "/submissions") {
+                return (
+                  <button
+                    key={link.href}
+                    onClick={handleSubmitClick}
+                    className="text-gray-300 hover:text-white transition-colors duration-200 font-medium cursor-pointer"
+                  >
+                    {link.label}
+                  </button>
+                )
+              }
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className="text-gray-300 hover:text-white transition-colors duration-200 font-medium"
+                >
+                  {link.label}
+                </Link>
+              )
+            })}
 
             {/* Auth Section */}
             {isLoading ? (
@@ -96,9 +137,9 @@ export function Navigation() {
                       <div className="flex items-center mt-1">
                         <span
                           className={`text-xs px-2 py-1 rounded-full ${
-                            user.tier === "free"
+                            user.tier === "creator"
                               ? "bg-gray-700 text-gray-300"
-                              : user.tier === "creator"
+                              : user.tier === "indie"
                                 ? "bg-blue-700 text-blue-200"
                                 : "bg-purple-700 text-purple-200"
                           }`}
@@ -116,10 +157,13 @@ export function Navigation() {
                   </DropdownMenuItem>
                   {(user.role === "admin" || user.role === "master_dev") && (
                     <DropdownMenuItem asChild>
-                      <Link href="/admin" className="text-purple-300 hover:text-purple-200 flex items-center">
+                      <button
+                        onClick={handleAdminPortalClick}
+                        className="w-full text-left text-purple-300 hover:text-purple-200 flex items-center px-2 py-1.5 text-sm cursor-pointer"
+                      >
                         <User className="mr-2 h-4 w-4" />
                         Admin Portal
-                      </Link>
+                      </button>
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuSeparator className="bg-gray-700" />
@@ -162,16 +206,32 @@ export function Navigation() {
         {isMobileMenuOpen && (
           <div className="md:hidden py-4 border-t border-gray-800">
             <div className="flex flex-col space-y-4">
-              {navLinks.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className="text-gray-300 hover:text-white transition-colors duration-200 font-medium px-2 py-1"
-                  onClick={() => setIsMobileMenuOpen(false)}
-                >
-                  {link.label}
-                </Link>
-              ))}
+              {navLinks.map((link) => {
+                if (link.href === "/submissions") {
+                  return (
+                    <button
+                      key={link.href}
+                      onClick={(e) => {
+                        handleSubmitClick(e)
+                        setIsMobileMenuOpen(false)
+                      }}
+                      className="text-gray-300 hover:text-white transition-colors duration-200 font-medium px-2 py-1 text-left"
+                    >
+                      {link.label}
+                    </button>
+                  )
+                }
+                return (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className="text-gray-300 hover:text-white transition-colors duration-200 font-medium px-2 py-1"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    {link.label}
+                  </Link>
+                )
+              })}
 
               {error && (
                 <div className="flex items-center space-x-2 text-red-400 px-2 py-1">
@@ -188,9 +248,9 @@ export function Navigation() {
                     {user.tier && (
                       <span
                         className={`text-xs px-2 py-1 rounded-full inline-block mt-1 ${
-                          user.tier === "free"
+                          user.tier === "creator"
                             ? "bg-gray-700 text-gray-300"
-                            : user.tier === "creator"
+                            : user.tier === "indie"
                               ? "bg-blue-700 text-blue-200"
                               : "bg-purple-700 text-purple-200"
                         }`}
@@ -207,13 +267,15 @@ export function Navigation() {
                     Dashboard
                   </Link>
                   {(user.role === "admin" || user.role === "master_dev") && (
-                    <Link
-                      href="/admin"
-                      className="text-purple-300 hover:text-purple-200 px-2 py-1"
-                      onClick={() => setIsMobileMenuOpen(false)}
+                    <button
+                      onClick={(e) => {
+                        handleAdminPortalClick(e)
+                        setIsMobileMenuOpen(false)
+                      }}
+                      className="text-purple-300 hover:text-purple-200 px-2 py-1 text-left"
                     >
                       Admin Portal
-                    </Link>
+                    </button>
                   )}
                   <button
                     onClick={() => {
