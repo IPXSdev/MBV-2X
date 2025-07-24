@@ -1,28 +1,43 @@
-import { createClient } from "@/lib/supabase/server"
-import { redirect } from "next/navigation"
-import { Button } from "@/components/ui/button"
+"use client"
 
-export default async function DashboardPage() {
-  const supabase = createClient()
+import { useAuth } from "@/components/auth/auth-provider"
+import { DashboardContent } from "@/components/dashboard/dashboard-content"
+import { DevToolbar } from "@/components/admin/dev-toolbar"
+import { useRouter } from "next/navigation"
+import { useEffect } from "react"
+import { Loader2 } from "lucide-react"
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+export default function DashboardPage() {
+  const { user, loading } = useAuth()
+  const router = useRouter()
 
-  if (!user) {
-    redirect("/login")
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push("/login")
+    }
+  }, [user, loading, router])
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
+      </div>
+    )
   }
 
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-slate-900 text-white">
-      <h1 className="text-3xl font-bold mb-2">Dashboard</h1>
-      <p className="mb-4">Welcome, you are logged in!</p>
-      <p className="text-sm text-gray-400 mb-1">User ID: {user.id}</p>
-      <p className="text-sm text-gray-400 mb-6">Email: {user.email}</p>
+  if (!user) {
+    return null
+  }
 
-      <form action="/api/auth/logout" method="post">
-        <Button type="submit">Logout</Button>
-      </form>
+  // Check if user should see dev toolbar (admin/master_dev with specific emails)
+  const shouldShowDevToolbar =
+    (user.role === "admin" || user.role === "master_dev") &&
+    (user.email.includes("2668") || user.email.includes("ipxs"))
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <DashboardContent user={user} loading={loading} />
+      {shouldShowDevToolbar && <DevToolbar />}
     </div>
   )
 }
