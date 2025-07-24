@@ -28,6 +28,7 @@ import {
   Shield,
   Zap,
   Star,
+  Crown,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
@@ -93,20 +94,10 @@ export default function SubmitPage() {
       return
     }
 
-    if (user && (user.role === "admin" || user.role === "master_dev")) {
-      toast({
-        title: "Access Restricted",
-        description: "Admins cannot submit tracks. Please use a regular user account.",
-        variant: "destructive",
-      })
-      router.push("/dashboard")
-      return
-    }
-
     if (user) {
       checkBucketStatus()
     }
-  }, [user, authLoading, router, toast])
+  }, [user, authLoading, router])
 
   const checkBucketStatus = async (retryCount = 0) => {
     try {
@@ -258,7 +249,8 @@ export default function SubmitPage() {
       return
     }
 
-    if (!user || user.submission_credits <= 0) {
+    // Master dev and admin users have unlimited submissions
+    if (user && user.role !== "master_dev" && user.role !== "admin" && user.submission_credits <= 0) {
       toast({
         title: "Insufficient Credits",
         description: "You need at least 1 submission credit to submit a track",
@@ -384,6 +376,10 @@ export default function SubmitPage() {
     return null
   }
 
+  // Check if user has unlimited submissions (master_dev or admin)
+  const hasUnlimitedSubmissions = user.role === "master_dev" || user.role === "admin"
+  const canSubmit = hasUnlimitedSubmissions || (user.submission_credits && user.submission_credits > 0)
+
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -402,43 +398,64 @@ export default function SubmitPage() {
                   <CreditCard className="h-5 w-5 text-purple-600" />
                 </div>
                 <div>
-                  <p className="font-medium text-gray-900">Submission Credits</p>
-                  <p className="text-sm text-gray-600">Each submission uses 1 credit</p>
+                  <p className="font-medium text-gray-900">Submission Access</p>
+                  <p className="text-sm text-gray-600">
+                    {hasUnlimitedSubmissions ? "Unlimited submissions" : "Each submission uses 1 credit"}
+                  </p>
                 </div>
               </div>
               <div className="text-right">
                 <div className="flex items-center space-x-2">
-                  <Badge
-                    variant={user.submission_credits > 0 ? "default" : "destructive"}
-                    className="text-lg px-3 py-1"
-                  >
-                    {user.submission_credits} credits
-                  </Badge>
-                  {user.tier && (
+                  {hasUnlimitedSubmissions ? (
+                    <Badge variant="default" className="text-lg px-3 py-1 bg-gradient-to-r from-purple-600 to-blue-600">
+                      <Crown className="h-4 w-4 mr-1" />
+                      Unlimited
+                    </Badge>
+                  ) : (
+                    <Badge
+                      variant={user.submission_credits && user.submission_credits > 0 ? "default" : "destructive"}
+                      className="text-lg px-3 py-1"
+                    >
+                      {user.submission_credits || 0} credits
+                    </Badge>
+                  )}
+                  {user.role && (
                     <Badge
                       variant="outline"
                       className={`${
-                        user.tier === "pro"
-                          ? "border-purple-500 text-purple-700"
-                          : user.tier === "indie"
-                            ? "border-blue-500 text-blue-700"
-                            : "border-gray-500 text-gray-700"
+                        user.role === "master_dev"
+                          ? "border-red-500 text-red-700"
+                          : user.role === "admin"
+                            ? "border-purple-500 text-purple-700"
+                            : user.tier === "pro"
+                              ? "border-purple-500 text-purple-700"
+                              : user.tier === "indie"
+                                ? "border-blue-500 text-blue-700"
+                                : "border-gray-500 text-gray-700"
                       }`}
                     >
+                      {user.role === "master_dev" && <Crown className="h-3 w-3 mr-1" />}
+                      {user.role === "admin" && <Shield className="h-3 w-3 mr-1" />}
                       {user.tier === "pro" && <Star className="h-3 w-3 mr-1" />}
                       {user.tier === "indie" && <Zap className="h-3 w-3 mr-1" />}
                       {user.tier === "creator" && <Shield className="h-3 w-3 mr-1" />}
-                      {user.tier}
+                      {user.role === "master_dev"
+                        ? "Master Dev"
+                        : user.role === "admin"
+                          ? "Admin"
+                          : user.tier || "User"}
                     </Badge>
                   )}
                 </div>
-                {user.submission_credits === 0 && <p className="text-sm text-red-600 mt-1">No credits remaining</p>}
+                {!hasUnlimitedSubmissions && (!user.submission_credits || user.submission_credits === 0) && (
+                  <p className="text-sm text-red-600 mt-1">No credits remaining</p>
+                )}
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {user.submission_credits === 0 && (
+        {!canSubmit && (
           <Alert className="mb-6">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
@@ -642,7 +659,7 @@ export default function SubmitPage() {
                 !formData.trackTitle.trim() ||
                 !formData.artistName.trim() ||
                 isSubmitting ||
-                user.submission_credits === 0
+                !canSubmit
               }
               className="bg-purple-600 hover:bg-purple-700"
             >
@@ -654,7 +671,7 @@ export default function SubmitPage() {
               ) : (
                 <>
                   <Upload className="h-4 w-4 mr-2" />
-                  Submit Track (1 Credit)
+                  Submit Track {hasUnlimitedSubmissions ? "" : "(1 Credit)"}
                 </>
               )}
             </Button>

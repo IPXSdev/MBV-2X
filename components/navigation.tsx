@@ -25,6 +25,7 @@ export function Navigation() {
     { href: "/", label: "Home" },
     { href: "/about", label: "About" },
     { href: "/podcast", label: "Podcast" },
+    { href: "/submit", label: "Submit" },
     { href: "/submissions", label: "Submissions" },
     { href: "/placements", label: "Placements" },
     { href: "/pricing", label: "Pricing" },
@@ -56,10 +57,6 @@ export function Navigation() {
     e.preventDefault()
     console.log("Submit clicked, user:", user)
     if (user) {
-      if (user.role === "admin" || user.role === "master_dev") {
-        alert("Admins cannot submit tracks. Please use a regular user account.")
-        return
-      }
       router.push("/submit")
     } else {
       router.push("/login?redirect=/submit")
@@ -88,7 +85,7 @@ export function Navigation() {
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-8">
             {navLinks.map((link) => {
-              if (link.href === "/submissions") {
+              if (link.href === "/submit") {
                 return (
                   <button
                     key={link.href}
@@ -133,18 +130,28 @@ export function Navigation() {
                   <div className="px-3 py-2 border-b border-gray-700">
                     <p className="text-sm text-white font-medium">{user.name || "User"}</p>
                     <p className="text-xs text-gray-400">{user.email || ""}</p>
-                    {user.tier && (
+                    {user.role && (
                       <div className="flex items-center mt-1">
                         <span
                           className={`text-xs px-2 py-1 rounded-full ${
-                            user.tier === "creator"
-                              ? "bg-gray-700 text-gray-300"
-                              : user.tier === "indie"
-                                ? "bg-blue-700 text-blue-200"
-                                : "bg-purple-700 text-purple-200"
+                            user.role === "master_dev"
+                              ? "bg-red-700 text-red-200"
+                              : user.role === "admin"
+                                ? "bg-purple-700 text-purple-200"
+                                : user.tier === "creator"
+                                  ? "bg-gray-700 text-gray-300"
+                                  : user.tier === "indie"
+                                    ? "bg-blue-700 text-blue-200"
+                                    : "bg-purple-700 text-purple-200"
                           }`}
                         >
-                          {user.tier.charAt(0).toUpperCase() + user.tier.slice(1)} Tier
+                          {user.role === "master_dev"
+                            ? "Master Dev"
+                            : user.role === "admin"
+                              ? "Admin"
+                              : user.tier
+                                ? `${user.tier.charAt(0).toUpperCase() + user.tier.slice(1)} Tier`
+                                : "User"}
                         </span>
                       </div>
                     )}
@@ -207,7 +214,7 @@ export function Navigation() {
           <div className="md:hidden py-4 border-t border-gray-800">
             <div className="flex flex-col space-y-4">
               {navLinks.map((link) => {
-                if (link.href === "/submissions") {
+                if (link.href === "/submit") {
                   return (
                     <button
                       key={link.href}
@@ -245,17 +252,27 @@ export function Navigation() {
                   <div className="px-2 py-1">
                     <p className="text-white font-medium">{user.name || "User"}</p>
                     <p className="text-xs text-gray-400">{user.email || ""}</p>
-                    {user.tier && (
+                    {user.role && (
                       <span
                         className={`text-xs px-2 py-1 rounded-full inline-block mt-1 ${
-                          user.tier === "creator"
-                            ? "bg-gray-700 text-gray-300"
-                            : user.tier === "indie"
-                              ? "bg-blue-700 text-blue-200"
-                              : "bg-purple-700 text-purple-200"
+                          user.role === "master_dev"
+                            ? "bg-red-700 text-red-200"
+                            : user.role === "admin"
+                              ? "bg-purple-700 text-purple-200"
+                              : user.tier === "creator"
+                                ? "bg-gray-700 text-gray-300"
+                                : user.tier === "indie"
+                                  ? "bg-blue-700 text-blue-200"
+                                  : "bg-purple-700 text-purple-200"
                         }`}
                       >
-                        {user.tier.charAt(0).toUpperCase() + user.tier.slice(1)} Tier
+                        {user.role === "master_dev"
+                          ? "Master Dev"
+                          : user.role === "admin"
+                            ? "Admin"
+                            : user.tier
+                              ? `${user.tier.charAt(0).toUpperCase() + user.tier.slice(1)} Tier`
+                              : "User"}
                       </span>
                     )}
                   </div>
