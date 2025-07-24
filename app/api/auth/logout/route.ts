@@ -1,5 +1,4 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { cookies } from "next/headers"
 import { createClient } from "@supabase/supabase-js"
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -14,19 +13,23 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey, {
 
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = cookies()
-    const sessionToken = cookieStore.get("session-token")?.value
+    console.log("🚪 Logout request received")
+
+    const sessionToken = request.cookies.get("session-token")?.value
 
     if (sessionToken) {
       // Delete the session from the database
-      await supabase.from("user_sessions").delete().eq("session_token", sessionToken)
+      const { error } = await supabase.from("user_sessions").delete().eq("session_token", sessionToken)
+
+      if (error) {
+        console.error("❌ Failed to delete session:", error)
+      } else {
+        console.log("✅ Session deleted successfully")
+      }
     }
 
     // Clear the session cookie
-    const response = NextResponse.json({
-      success: true,
-      message: "Logged out successfully",
-    })
+    const response = NextResponse.json({ success: true, message: "Logged out successfully" })
 
     response.cookies.set("session-token", "", {
       httpOnly: true,
@@ -39,12 +42,6 @@ export async function POST(request: NextRequest) {
     return response
   } catch (error) {
     console.error("❌ Logout error:", error)
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Logout failed",
-      },
-      { status: 500 },
-    )
+    return NextResponse.json({ success: false, error: "Internal server error" }, { status: 500 })
   }
 }

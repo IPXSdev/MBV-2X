@@ -42,26 +42,9 @@ export function LoginForm() {
     }
   }
 
-  const fillMasterDevCredentials = async () => {
-    try {
-      // Fetch the master dev email from server
-      const response = await fetch("/api/auth/get-master-dev-email")
-      const data = await response.json()
-
-      if (data.success) {
-        setEmail(data.email)
-        setPassword("") // Don't pre-fill password for security
-        // Focus on password field
-        const passwordField = document.getElementById("password") as HTMLInputElement
-        if (passwordField) {
-          passwordField.focus()
-        }
-      }
-    } catch (error) {
-      console.error("Error filling master dev credentials:", error)
-      // Fallback to just setting the email
-      setEmail("harris@tmbm.dev")
-    }
+  const fillMasterDevCredentials = () => {
+    setEmail("harris@tmbm.com")
+    setPassword(process.env.NEXT_PUBLIC_MASTER_DEV_KEY_HARRIS || "")
   }
 
   return (
@@ -194,7 +177,7 @@ export function LoginForm() {
                   className="w-full bg-transparent border-white/20 text-gray-300 hover:bg-white/10 mt-3"
                   onClick={fillMasterDevCredentials}
                 >
-                  Fill Master Dev Email
+                  Fill Master Dev Credentials
                 </Button>
               </div>
             </div>

@@ -13,7 +13,7 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey, {
 
 export async function getCurrentUser() {
   try {
-    const cookieStore = await cookies()
+    const cookieStore = cookies()
     const sessionToken = cookieStore.get("session-token")?.value
 
     if (!sessionToken) {
