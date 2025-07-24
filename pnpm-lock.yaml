@@ -8,9 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@hookform/resolvers':
-        specifier: latest
-        version: 5.1.1(react-hook-form@7.61.0(react@18.0.0))
       '@radix-ui/react-accordion':
         specifier: latest
         version: 1.2.11(@types/react-dom@18.0.0)(@types/react@18.0.0)(react-dom@18.0.0(react@18.0.0))(react@18.0.0)
@@ -246,11 +243,6 @@ packages:
 
   '@floating-ui/utils@0.2.10':
     resolution: {integrity: sha512-aGTxbpbg8/b5JfU1HXSrbH3wXZuLPJcNEcZQFMxLs3oSzgtVu6nFPkbbGGUvBcUjKV2YyB9Wxxabo+HEH9tcRQ==}
-
-  '@hookform/resolvers@5.1.1':
-    resolution: {integrity: sha512-J/NVING3LMAEvexJkyTLjruSm7aOFx7QX21pzkiJfMoNG0wl5aFEjLTl7ay7IQb9EWY6AkrBy7tHL2Alijpdcg==}
-    peerDependencies:
-      react-hook-form: ^7.55.0
 
   '@humanwhocodes/config-array@0.11.14':
     resolution: {integrity: sha512-3T8LkOmg45BV5FICb15QQMsyUSWrQ8AygVfC7ZG32zOalnqrilm018ZVCw0eapXux8FtA33q8PSRSstjee3jSg==}
@@ -2995,11 +2987,6 @@ snapshots:
 
   '@floating-ui/utils@0.2.10': {}
 
-  '@hookform/resolvers@5.1.1(react-hook-form@7.61.0(react@18.0.0))':
-    dependencies:
-      '@standard-schema/utils': 0.3.0
-      react-hook-form: 7.61.0(react@18.0.0)
-
   '@humanwhocodes/config-array@0.11.14':
     dependencies:
       '@humanwhocodes/object-schema': 2.0.3
@@ -4501,7 +4488,7 @@ snapshots:
       eslint: 8.56.0
       eslint-import-resolver-node: 0.3.9
       eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(eslint@8.56.0))(eslint@8.56.0)
-      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@6.21.0(eslint@8.56.0)(typescript@5.3.3))(eslint-import-resolver-typescript@3.10.1)(eslint@8.56.0)
+      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@6.21.0(eslint@8.56.0)(typescript@5.3.3))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(eslint@8.56.0))(eslint@8.56.0))(eslint@8.56.0)
       eslint-plugin-jsx-a11y: 6.10.2(eslint@8.56.0)
       eslint-plugin-react: 7.37.5(eslint@8.56.0)
       eslint-plugin-react-hooks: 5.0.0-canary-7118f5dd7-20230705(eslint@8.56.0)
@@ -4531,7 +4518,7 @@ snapshots:
       tinyglobby: 0.2.14
       unrs-resolver: 1.11.1
     optionalDependencies:
-      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@6.21.0(eslint@8.56.0)(typescript@5.3.3))(eslint-import-resolver-typescript@3.10.1)(eslint@8.56.0)
+      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@6.21.0(eslint@8.56.0)(typescript@5.3.3))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(eslint@8.56.0))(eslint@8.56.0))(eslint@8.56.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -4546,7 +4533,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-plugin-import@2.32.0(@typescript-eslint/parser@6.21.0(eslint@8.56.0)(typescript@5.3.3))(eslint-import-resolver-typescript@3.10.1)(eslint@8.56.0):
+  eslint-plugin-import@2.32.0(@typescript-eslint/parser@6.21.0(eslint@8.56.0)(typescript@5.3.3))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(eslint@8.56.0))(eslint@8.56.0))(eslint@8.56.0):
     dependencies:
       '@rtsao/scc': 1.1.0
       array-includes: 3.1.9
