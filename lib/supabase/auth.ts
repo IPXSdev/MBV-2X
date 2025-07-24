@@ -1,24 +1,25 @@
-import { cookies } from "next/headers"
 import { createClient } from "@supabase/supabase-js"
-import type { User } from "@/lib/auth/types"
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-})
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
-export async function getCurrentUser(): Promise<User | null> {
+export const createServiceClient = () => {
+  return createClient(supabaseUrl, supabaseServiceKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  })
+}
+
+export async function getCurrentUser(sessionToken?: string) {
+  if (!sessionToken) {
+    return null
+  }
+
+  const supabase = createServiceClient()
+
   try {
-    const cookieStore = cookies()
-    const sessionToken = cookieStore.get("session-token")?.value
-
-    if (!sessionToken) {
-      return null
-    }
-
-    // Get user by session token
     const { data, error } = await supabase
       .from("user_sessions")
       .select(`
@@ -47,7 +48,7 @@ export async function getCurrentUser(): Promise<User | null> {
 
     // Check if session is expired
     if (new Date(data.expires_at) < new Date()) {
-      // Clean up expired session
+      // Delete expired session
       await supabase.from("user_sessions").delete().eq("session_token", sessionToken)
       return null
     }
@@ -68,7 +69,7 @@ export async function getCurrentUser(): Promise<User | null> {
       compensation_type: user.compensation_type,
     }
   } catch (error) {
-    console.error("Error getting current user:", error)
+    console.error("❌ Error getting current user:", error)
     return null
   }
 }
