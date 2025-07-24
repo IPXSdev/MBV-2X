@@ -6,6 +6,7 @@ import { randomBytes } from "crypto"
 export const dynamic = "force-dynamic"
 
 export async function POST(request: NextRequest) {
+  console.log("Signup API: Received request.")
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -15,10 +16,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Server configuration error. Please contact support." }, { status: 500 })
     }
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
+    console.log("Signup API: Supabase client created.")
 
-    const { email, password, name, artistName, primaryGenre, legalWaiverAccepted, subscribeToNewsletter } =
-      await request.json()
+    const body = await request.json()
+    const { email, password, name, artistName, primaryGenre, legalWaiverAccepted, subscribeToNewsletter } = body
     const normalizedEmail = email.toLowerCase().trim()
+    console.log(`Signup API: Processing signup for ${normalizedEmail}.`)
 
     // --- Validation ---
     if (!normalizedEmail || !password || !name || !artistName || !primaryGenre) {
@@ -30,8 +33,10 @@ export async function POST(request: NextRequest) {
     if (!legalWaiverAccepted) {
       return NextResponse.json({ error: "The legal waiver must be accepted to create an account." }, { status: 400 })
     }
+    console.log("Signup API: Validation passed.")
 
     // Check if user already exists
+    console.log("Signup API: Checking for existing user.")
     const { data: existingUser, error: existingUserError } = await supabase
       .from("users")
       .select("id")
@@ -39,16 +44,24 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (existingUserError && existingUserError.code !== "PGRST116") {
+      // PGRST116 means no rows found, which is good here.
       console.error("Signup API: DB error checking for existing user:", existingUserError)
-      return NextResponse.json({ error: "Database error. Please try again later." }, { status: 500 })
+      return NextResponse.json(
+        { error: "Database error. Please try again later.", details: existingUserError.message },
+        { status: 500 },
+      )
     }
     if (existingUser) {
+      console.log(`Signup API: User with email ${normalizedEmail} already exists.`)
       return NextResponse.json({ error: "An account with this email already exists." }, { status: 409 })
     }
+    console.log("Signup API: User does not exist. Proceeding.")
 
     const passwordHash = await bcrypt.hash(password, 10)
+    console.log("Signup API: Password hashed.")
 
     // --- Create New User ---
+    console.log("Signup API: Inserting new user into database.")
     const { data: newUser, error: createError } = await supabase
       .from("users")
       .insert({
@@ -69,10 +82,15 @@ export async function POST(request: NextRequest) {
 
     if (createError || !newUser) {
       console.error("Signup API: Supabase user creation error:", createError)
-      return NextResponse.json({ error: "Could not create your account. Please try again." }, { status: 500 })
+      return NextResponse.json(
+        { error: "Could not create your account. Please try again.", details: createError?.message },
+        { status: 500 },
+      )
     }
+    console.log(`Signup API: New user created with ID: ${newUser.id}.`)
 
     // --- Create Session ---
+    console.log(`Signup API: Creating session for user ${newUser.id}.`)
     const sessionToken = randomBytes(32).toString("hex")
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
 
@@ -84,13 +102,15 @@ export async function POST(request: NextRequest) {
 
     if (sessionError) {
       console.error("Signup API: Supabase session creation error:", sessionError)
-      // The user was created, but the session wasn't. This is a degraded state.
-      // We should inform the user to try logging in.
       return NextResponse.json(
-        { error: "Account created, but failed to log you in. Please try logging in manually." },
+        {
+          error: "Account created, but failed to log you in. Please try logging in manually.",
+          details: sessionError.message,
+        },
         { status: 500 },
       )
     }
+    console.log(`Signup API: Session created for user ${newUser.id}.`)
 
     const response = NextResponse.json({
       success: true,
@@ -106,10 +126,10 @@ export async function POST(request: NextRequest) {
       path: "/",
     })
 
-    console.log(`Signup API: Successful signup for user ${newUser.id}.`)
+    console.log(`Signup API: Responding with success for user ${newUser.id}.`)
     return response
   } catch (error) {
-    console.error("Signup API: Unhandled exception:", error)
+    console.error("Signup API: Unhandled exception in main try-catch block:", error)
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred."
     return NextResponse.json(
       { error: "An unexpected internal server error occurred.", details: errorMessage },
