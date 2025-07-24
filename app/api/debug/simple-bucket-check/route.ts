@@ -5,123 +5,111 @@ export const dynamic = "force-dynamic"
 
 export async function GET() {
   try {
-    console.log("Starting bucket check...")
+    // Use service role key for admin operations
+    const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
-    // Check environment variables
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-    if (!supabaseUrl || !supabaseServiceKey) {
-      return NextResponse.json({
-        success: false,
-        error: "Missing Supabase environment variables",
-        details: {
-          hasUrl: !!supabaseUrl,
-          hasServiceKey: !!supabaseServiceKey,
-        },
-      })
-    }
-
-    // Create service client
-    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    })
-
-    console.log("Created Supabase client")
-
-    // Check if bucket exists
-    const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets()
-
-    if (bucketsError) {
-      console.error("Error listing buckets:", bucketsError)
-      return NextResponse.json({
-        success: false,
-        error: "Failed to list buckets",
-        details: bucketsError,
-      })
-    }
-
-    console.log(
-      "Available buckets:",
-      buckets?.map((b) => b.name),
-    )
-
-    const audioBucket = buckets?.find((bucket) => bucket.name === "audio-submissions")
-
-    if (!audioBucket) {
-      console.log("Audio submissions bucket not found")
-      return NextResponse.json({
-        success: false,
-        error: "Audio submissions bucket does not exist",
-        availableBuckets: buckets?.map((b) => b.name) || [],
-      })
-    }
-
-    console.log("Found audio-submissions bucket:", audioBucket)
-
-    // Create a minimal MP3 file for testing (silent 1-second MP3)
-    const testFileName = `test-${Date.now()}.mp3`
-
-    // This is a minimal valid MP3 file (silent, 1 second)
-    const mp3Header = new Uint8Array([
-      0xff, 0xfb, 0x90, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    // Create a minimal MP3 file buffer for testing (44 bytes - minimal MP3 header)
+    const mp3Buffer = Buffer.from([
+      0xff,
+      0xfb,
+      0x90,
+      0x00, // MP3 header
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
     ])
 
-    console.log("Testing upload with file:", testFileName)
+    const testFileName = `test-${Date.now()}.mp3`
 
+    // Test upload
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from("audio-submissions")
-      .upload(testFileName, mp3Header, {
+      .upload(testFileName, mp3Buffer, {
         contentType: "audio/mpeg",
-        upsert: true,
+        cacheControl: "3600",
       })
 
     if (uploadError) {
       console.error("Upload test failed:", uploadError)
       return NextResponse.json({
         success: false,
-        error: "Upload test failed",
-        details: uploadError,
-        bucketExists: true,
+        error: "Upload failed",
+        details: uploadError.message,
+        bucket: "audio-submissions",
+        testFile: testFileName,
       })
     }
 
-    console.log("Upload test successful:", uploadData)
+    // Test download
+    const { data: downloadData, error: downloadError } = await supabase.storage
+      .from("audio-submissions")
+      .download(testFileName)
 
-    // Test public URL generation
-    const {
-      data: { publicUrl },
-    } = supabase.storage.from("audio-submissions").getPublicUrl(testFileName)
-
-    console.log("Generated public URL:", publicUrl)
+    if (downloadError) {
+      console.error("Download test failed:", downloadError)
+      return NextResponse.json({
+        success: false,
+        error: "Download failed",
+        details: downloadError.message,
+        bucket: "audio-submissions",
+        testFile: testFileName,
+      })
+    }
 
     // Clean up test file
     const { error: deleteError } = await supabase.storage.from("audio-submissions").remove([testFileName])
 
     if (deleteError) {
       console.warn("Failed to clean up test file:", deleteError)
-    } else {
-      console.log("Test file cleaned up successfully")
     }
 
     return NextResponse.json({
       success: true,
-      bucketExists: true,
-      bucketInfo: audioBucket,
-      uploadTest: {
-        success: true,
-        fileName: testFileName,
-        publicUrl,
-      },
-      message: "Audio submissions bucket is fully functional",
+      message: "Bucket is working correctly",
+      bucket: "audio-submissions",
+      testFile: testFileName,
+      uploadSize: mp3Buffer.length,
+      downloadSize: downloadData?.size || 0,
     })
   } catch (error) {
-    console.error("Bucket check failed:", error)
+    console.error("Bucket check error:", error)
     return NextResponse.json({
       success: false,
       error: "Bucket check failed",

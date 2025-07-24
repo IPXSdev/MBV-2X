@@ -18,7 +18,7 @@ BEGIN
         -- Update bucket configuration to be more permissive
         UPDATE storage.buckets 
         SET 
-            public = true,
+            public = false,
             file_size_limit = 52428800, -- 50MB
             allowed_mime_types = ARRAY[
                 'audio/mpeg',
@@ -26,6 +26,7 @@ BEGIN
                 'audio/wav',
                 'audio/wave',
                 'audio/x-wav',
+                'audio/vnd.wav',
                 'audio/flac',
                 'audio/x-flac',
                 'audio/aac',
@@ -34,7 +35,6 @@ BEGIN
                 'audio/x-m4a',
                 'audio/ogg',
                 'audio/webm',
-                'audio/vnd.wav',
                 'audio/x-ms-wma'
             ]
         WHERE id = 'audio-submissions';
@@ -46,7 +46,7 @@ BEGIN
         VALUES (
             'audio-submissions',
             'audio-submissions',
-            true,
+            false,
             52428800, -- 50MB in bytes
             ARRAY[
                 'audio/mpeg',
@@ -54,6 +54,7 @@ BEGIN
                 'audio/wav',
                 'audio/wave',
                 'audio/x-wav',
+                'audio/vnd.wav',
                 'audio/flac',
                 'audio/x-flac',
                 'audio/aac',
@@ -62,7 +63,6 @@ BEGIN
                 'audio/x-m4a',
                 'audio/ogg',
                 'audio/webm',
-                'audio/vnd.wav',
                 'audio/x-ms-wma'
             ]
         );
@@ -71,49 +71,46 @@ BEGIN
     END IF;
 
     -- Drop existing policies to avoid conflicts
-    DROP POLICY IF EXISTS "Allow public uploads to audio-submissions" ON storage.objects;
-    DROP POLICY IF EXISTS "Allow public read access to audio-submissions" ON storage.objects;
-    DROP POLICY IF EXISTS "Allow authenticated read access to audio-submissions" ON storage.objects;
-    DROP POLICY IF EXISTS "Allow admin full access to audio-submissions" ON storage.objects;
-    DROP POLICY IF EXISTS "Allow authenticated uploads to audio-submissions" ON storage.objects;
-    DROP POLICY IF EXISTS "Allow user access to own files" ON storage.objects;
+    DELETE FROM storage.policies WHERE bucket_id = 'audio-submissions';
 
     -- Create comprehensive RLS policies for the bucket
     
-    -- Policy 1: Allow authenticated users to upload
-    CREATE POLICY "Allow authenticated uploads to audio-submissions"
-    ON storage.objects FOR INSERT
+    -- Policy 1: Allow authenticated users to upload their own files
+    CREATE POLICY "Users can upload audio files" ON storage.objects FOR INSERT
     WITH CHECK (
         bucket_id = 'audio-submissions' 
         AND auth.role() = 'authenticated'
+        AND (storage.foldername(name))[1] = auth.uid()::text
     );
     
     policy_count := policy_count + 1;
 
-    -- Policy 2: Allow public read access (for playback)
-    CREATE POLICY "Allow public read access to audio-submissions"
-    ON storage.objects FOR SELECT
-    USING (bucket_id = 'audio-submissions');
+    -- Policy 2: Allow users to read their own files
+    CREATE POLICY "Users can read their own audio files" ON storage.objects FOR SELECT
+    USING (bucket_id = 'audio-submissions' 
+        AND auth.role() = 'authenticated'
+        AND (storage.foldername(name))[1] = auth.uid()::text
+    );
     
     policy_count := policy_count + 1;
 
-    -- Policy 3: Allow users to access their own files
-    CREATE POLICY "Allow user access to own files"
-    ON storage.objects FOR ALL
+    -- Policy 3: Allow admins to read all files
+    CREATE POLICY "Admins can read all audio files" ON storage.objects FOR SELECT
     USING (
         bucket_id = 'audio-submissions' 
         AND auth.role() = 'authenticated'
+        AND EXISTS (
+            SELECT 1 FROM users 
+            WHERE users.id = auth.uid() 
+            AND users.role IN ('admin', 'master_dev')
+        )
     );
     
     policy_count := policy_count + 1;
 
     -- Policy 4: Allow service role full access (for admin operations)
-    CREATE POLICY "Allow service role full access to audio-submissions"
-    ON storage.objects FOR ALL
-    USING (
-        bucket_id = 'audio-submissions' 
-        AND auth.role() = 'service_role'
-    );
+    CREATE POLICY "Service role can manage all files" ON storage.objects FOR ALL
+    USING (bucket_id = 'audio-submissions' AND auth.role() = 'service_role');
     
     policy_count := policy_count + 1;
 

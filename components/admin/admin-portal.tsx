@@ -6,11 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
+import { TierManagementPanel } from "@/components/admin/tier-management-panel"
 import {
   Users,
   FileText,
@@ -24,12 +23,9 @@ import {
   Crown,
   Play,
   Download,
-  Upload,
-  Youtube,
   Star,
   Clock,
   Music,
-  Eye,
   Plus,
   Minus,
 } from "lucide-react"
@@ -37,7 +33,7 @@ import {
 interface AdminUser {
   id: string
   email: string
-  name: string
+  username: string
   role: string
   tier: string
   submission_credits: number
@@ -48,13 +44,13 @@ interface AdminUser {
 
 interface Submission {
   id: string
-  title: string
+  track_title: string
   artist_name: string
   genre?: string
   status: "pending" | "in_review" | "approved" | "rejected"
   admin_rating?: number
   admin_feedback?: string
-  submitted_at: string
+  created_at: string
   updated_at?: string
   file_url?: string
   file_size?: number
@@ -62,7 +58,7 @@ interface Submission {
   description?: string
   users?: {
     id: string
-    name: string
+    username: string
     email: string
     tier: string
   }
@@ -106,6 +102,7 @@ export function AdminPortal() {
   const [media, setMedia] = useState<MediaItem[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [activeTab, setActiveTab] = useState("submissions")
 
@@ -119,6 +116,8 @@ export function AdminPortal() {
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
   const [userFilter, setUserFilter] = useState("all")
   const [tierFilter, setTierFilter] = useState("all")
+  const [selectedUserForEdit, setSelectedUserForEdit] = useState<AdminUser | null>(null)
+  const [showTierPanel, setShowTierPanel] = useState(false)
 
   // Submission management states
   const [submissionFilter, setSubmissionFilter] = useState("all")
@@ -130,12 +129,21 @@ export function AdminPortal() {
 
   const fetchData = async () => {
     setLoading(true)
+    setError(null)
+
     try {
-      const [usersRes, submissionsRes, statsRes, mediaRes] = await Promise.all([
-        fetch("/api/admin/users"),
-        fetch("/api/admin/submissions"),
-        fetch("/api/admin/stats"),
-        fetch("/api/admin/media"),
+      const [usersRes, submissionsRes, statsRes] = await Promise.all([
+        fetch("/api/admin/users").catch(() => ({ ok: false, json: () => Promise.resolve({ users: [] }) })),
+        fetch("/api/admin/submissions").catch(() => ({ ok: false, json: () => Promise.resolve({ submissions: [] }) })),
+        fetch("/api/admin/stats").catch(() => ({
+          ok: false,
+          json: () =>
+            Promise.resolve({
+              submissions: { total: 0, pending: 0, approved: 0, rejected: 0, in_review: 0 },
+              users: { total: 0, creator: 0, indie: 0, pro: 0, admins: 0 },
+              activity: { recentSubmissions: 0, recentUsers: 0 },
+            }),
+        })),
       ])
 
       if (usersRes.ok) {
@@ -153,12 +161,20 @@ export function AdminPortal() {
         setStats(statsData)
       }
 
-      if (mediaRes.ok) {
-        const mediaData = await mediaRes.json()
-        setMedia(mediaData.media || [])
+      // Try to fetch media, but don't fail if it doesn't exist
+      try {
+        const mediaRes = await fetch("/api/admin/media")
+        if (mediaRes.ok) {
+          const mediaData = await mediaRes.json()
+          setMedia(mediaData.media || [])
+        }
+      } catch (mediaError) {
+        console.warn("Media endpoint not available:", mediaError)
+        setMedia([])
       }
     } catch (error) {
       console.error("Error fetching admin data:", error)
+      setError("Failed to load admin data. Please try again.")
     } finally {
       setLoading(false)
     }
@@ -218,10 +234,21 @@ export function AdminPortal() {
     }
   }
 
+  const handleEditUser = (user: AdminUser) => {
+    setSelectedUserForEdit(user)
+    setShowTierPanel(true)
+  }
+
+  const handleUserUpdate = (userId: string) => {
+    setShowTierPanel(false)
+    setSelectedUserForEdit(null)
+    fetchData() // Refresh data
+  }
+
   const filteredUsers = users.filter((u) => {
     const matchesSearch =
       u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      u.name.toLowerCase().includes(searchTerm.toLowerCase())
+      u.username.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesRole = userFilter === "all" || u.role === userFilter
     const matchesTier = tierFilter === "all" || u.tier === tierFilter
     return matchesSearch && matchesRole && matchesTier
@@ -229,7 +256,7 @@ export function AdminPortal() {
 
   const filteredSubmissions = submissions.filter((s) => {
     const matchesSearch =
-      s.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      s.track_title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       s.artist_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (s.users?.email || "").toLowerCase().includes(searchTerm.toLowerCase())
     const matchesStatus = statusFilter === "all" || s.status === statusFilter
@@ -242,6 +269,22 @@ export function AdminPortal() {
         <div className="text-center">
           <RefreshCw className="h-8 w-8 animate-spin text-blue-500 mx-auto mb-4" />
           <p className="text-gray-300">Loading admin portal...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <Shield className="h-16 w-16 text-red-500 mx-auto mb-4" />
+          <h1 className="text-2xl font-bold text-white mb-2">Error Loading Admin Portal</h1>
+          <p className="text-gray-400 mb-4">{error}</p>
+          <Button onClick={fetchData} className="bg-blue-600 hover:bg-blue-700">
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Try Again
+          </Button>
         </div>
       </div>
     )
@@ -262,7 +305,7 @@ export function AdminPortal() {
               Admin Portal
             </h1>
             <p className="text-gray-400 mt-2">
-              Welcome back, {user?.name} • {user?.role?.replace("_", " ").toUpperCase()}
+              Welcome back, {user?.username || user?.email} • {user?.role?.replace("_", " ").toUpperCase()}
             </p>
           </div>
           <Button onClick={fetchData} className="bg-blue-600 hover:bg-blue-700">
@@ -351,10 +394,6 @@ export function AdminPortal() {
               <Users className="h-4 w-4 mr-2" />
               Users
             </TabsTrigger>
-            <TabsTrigger value="media" className="data-[state=active]:bg-gray-700">
-              <Youtube className="h-4 w-4 mr-2" />
-              Media
-            </TabsTrigger>
             <TabsTrigger value="analytics" className="data-[state=active]:bg-gray-700">
               <BarChart3 className="h-4 w-4 mr-2" />
               Analytics
@@ -419,7 +458,7 @@ export function AdminPortal() {
                                 <Music className="h-5 w-5 text-white" />
                               </div>
                               <div>
-                                <p className="font-medium text-white">{submission.title}</p>
+                                <p className="font-medium text-white">{submission.track_title}</p>
                                 <p className="text-sm text-gray-400">{submission.genre}</p>
                               </div>
                             </div>
@@ -427,7 +466,7 @@ export function AdminPortal() {
                           <td className="p-3 text-gray-300">{submission.artist_name}</td>
                           <td className="p-3">
                             <div>
-                              <p className="text-gray-300">{submission.users?.name}</p>
+                              <p className="text-gray-300">{submission.users?.username}</p>
                               <p className="text-xs text-gray-500">{submission.users?.email}</p>
                             </div>
                           </td>
@@ -457,7 +496,7 @@ export function AdminPortal() {
                             )}
                           </td>
                           <td className="p-3 text-gray-400 text-sm">
-                            {new Date(submission.submitted_at).toLocaleDateString()}
+                            {new Date(submission.created_at).toLocaleDateString()}
                           </td>
                           <td className="p-3">
                             <div className="flex space-x-2">
@@ -578,7 +617,7 @@ export function AdminPortal() {
                           </td>
                           <td className="p-3">
                             <div>
-                              <p className="font-medium text-white">{user.name}</p>
+                              <p className="font-medium text-white">{user.username}</p>
                               <p className="text-sm text-gray-400">{user.email}</p>
                             </div>
                           </td>
@@ -615,7 +654,12 @@ export function AdminPortal() {
                           </td>
                           <td className="p-3">
                             <div className="flex space-x-2">
-                              <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-gray-400 hover:text-white"
+                                onClick={() => handleEditUser(user)}
+                              >
                                 <Edit className="h-4 w-4" />
                               </Button>
                               <Button variant="ghost" size="sm" className="text-gray-400 hover:text-red-400">
@@ -628,134 +672,6 @@ export function AdminPortal() {
                     </tbody>
                   </table>
                 </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Media Tab */}
-          <TabsContent value="media">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-              {/* Sync YouTube Video */}
-              <Card className="bg-gray-800 border-gray-700">
-                <CardHeader>
-                  <CardTitle className="text-white flex items-center">
-                    <Youtube className="h-5 w-5 mr-2 text-red-500" />
-                    Sync YouTube Video
-                  </CardTitle>
-                  <p className="text-gray-400 text-sm">Add YouTube videos to the platform media library</p>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <Label htmlFor="youtube-url" className="text-gray-300">
-                      YouTube URL
-                    </Label>
-                    <Input
-                      id="youtube-url"
-                      placeholder="https://youtube.com/watch?v=..."
-                      value={youtubeUrl}
-                      onChange={(e) => setYoutubeUrl(e.target.value)}
-                      className="bg-gray-700 border-gray-600 text-white"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="video-title" className="text-gray-300">
-                      Title
-                    </Label>
-                    <Input
-                      id="video-title"
-                      placeholder="Video title"
-                      value={videoTitle}
-                      onChange={(e) => setVideoTitle(e.target.value)}
-                      className="bg-gray-700 border-gray-600 text-white"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="video-description" className="text-gray-300">
-                      Description
-                    </Label>
-                    <Textarea
-                      id="video-description"
-                      placeholder="Video description"
-                      value={videoDescription}
-                      onChange={(e) => setVideoDescription(e.target.value)}
-                      className="bg-gray-700 border-gray-600 text-white"
-                      rows={3}
-                    />
-                  </div>
-                  <Button
-                    onClick={handleSyncYouTubeVideo}
-                    disabled={uploadingMedia || !youtubeUrl.trim()}
-                    className="w-full bg-red-600 hover:bg-red-700"
-                  >
-                    <Youtube className="h-4 w-4 mr-2" />
-                    {uploadingMedia ? "Syncing..." : "Sync YouTube Video"}
-                  </Button>
-                </CardContent>
-              </Card>
-
-              {/* Upload Custom Media */}
-              <Card className="bg-gray-800 border-gray-700">
-                <CardHeader>
-                  <CardTitle className="text-white flex items-center">
-                    <Upload className="h-5 w-5 mr-2 text-blue-500" />
-                    Upload Custom Media
-                  </CardTitle>
-                  <p className="text-gray-400 text-sm">Upload custom audio, video, or image files</p>
-                </CardHeader>
-                <CardContent>
-                  <div className="border-2 border-dashed border-gray-600 rounded-lg p-8 text-center">
-                    <Upload className="h-12 w-12 text-gray-500 mx-auto mb-4" />
-                    <p className="text-gray-400 mb-2">Drag and drop files here</p>
-                    <p className="text-gray-500 text-sm mb-4">or click to browse</p>
-                    <Button variant="outline" className="border-gray-600 bg-transparent">
-                      Choose Files
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Media Library */}
-            <Card className="bg-gray-800 border-gray-700">
-              <CardHeader>
-                <CardTitle className="text-white">Media Library</CardTitle>
-                <p className="text-gray-400 text-sm">Manage uploaded media files</p>
-              </CardHeader>
-              <CardContent>
-                {media.length === 0 ? (
-                  <div className="text-center py-12">
-                    <Youtube className="h-12 w-12 text-gray-500 mx-auto mb-4" />
-                    <p className="text-gray-400">No media files uploaded yet</p>
-                    <p className="text-gray-500 text-sm">Upload your first video or audio file to get started</p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {media.map((item) => (
-                      <div key={item.id} className="bg-gray-700 rounded-lg p-4">
-                        <div className="aspect-video bg-gray-600 rounded-lg mb-3 flex items-center justify-center">
-                          {item.type === "youtube" ? (
-                            <Youtube className="h-8 w-8 text-red-500" />
-                          ) : (
-                            <Upload className="h-8 w-8 text-blue-500" />
-                          )}
-                        </div>
-                        <h4 className="text-white font-medium truncate">{item.title}</h4>
-                        <p className="text-gray-400 text-sm mt-1">{new Date(item.created_at).toLocaleDateString()}</p>
-                        <div className="flex space-x-2 mt-3">
-                          <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white">
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white">
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="sm" className="text-gray-400 hover:text-red-400">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -877,6 +793,19 @@ export function AdminPortal() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Tier Management Panel */}
+      {selectedUserForEdit && (
+        <TierManagementPanel
+          user={selectedUserForEdit}
+          isOpen={showTierPanel}
+          onClose={() => {
+            setShowTierPanel(false)
+            setSelectedUserForEdit(null)
+          }}
+          onUpdate={handleUserUpdate}
+        />
+      )}
     </div>
   )
 }
