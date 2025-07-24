@@ -44,7 +44,8 @@ export function LoginForm() {
 
   const fillMasterDevCredentials = () => {
     setEmail("harris@tmbm.dev")
-    setPassword(process.env.NEXT_PUBLIC_MASTER_DEV_KEY_HARRIS || "")
+    // For security, the master key is not pre-filled and must be entered manually.
+    setPassword("")
   }
 
   return (
