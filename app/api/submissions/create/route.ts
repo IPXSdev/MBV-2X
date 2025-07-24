@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getCurrentUser } from "@/lib/supabase/auth"
+import { getCurrentUser } from "@/lib/auth"
 import { createClient } from "@supabase/supabase-js"
 
 export const dynamic = "force-dynamic"
@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user has submission credits (unless master dev)
-    if (user.role !== "master_dev" && user.submission_credits <= 0) {
+    if (user.role !== "master_dev" && (user.submission_credits || 0) <= 0) {
       return NextResponse.json(
         {
           error: "No submission credits remaining",
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     // Transform old format to new format if needed
     const submissionData = {
       track_title: body.track_title || body.title,
-      artist_name: body.artist_name || body.artistName,
+      artist_name: body.artist_name || body.artist,
       genre: body.genre,
       mood_tags: Array.isArray(body.mood_tags) ? body.mood_tags : body.moodTags ? JSON.parse(body.moodTags) : [],
       description: body.description,
@@ -39,11 +39,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate required fields
-    if (!submissionData.track_title || !submissionData.artist_name || !submissionData.genre) {
+    if (!submissionData.track_title || !submissionData.artist_name) {
       return NextResponse.json(
         {
           error: "Missing required fields",
-          message: "Track title, artist name, and genre are required",
+          message: "Track title and artist name are required",
         },
         { status: 400 },
       )
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
         user_id: user.id,
         track_title: submissionData.track_title,
         artist_name: submissionData.artist_name,
-        genre: submissionData.genre,
+        genre: submissionData.genre || 'Other',
         mood_tags: submissionData.mood_tags,
         description: submissionData.description,
         file_url: submissionData.file_url,
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
       const { error: creditError } = await supabase
         .from("users")
         .update({
-          submission_credits: Math.max(0, user.submission_credits - 1),
+          submission_credits: Math.max(0, (user.submission_credits || 0) - 1),
           updated_at: new Date().toISOString(),
         })
         .eq("id", user.id)

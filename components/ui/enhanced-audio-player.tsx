@@ -12,6 +12,9 @@ interface EnhancedAudioPlayerProps {
   artist?: string
   albumArt?: string
   className?: string
+  compact?: boolean
+  showWaveform?: boolean
+  duration?: number
 }
 
 export function EnhancedAudioPlayer({ 
@@ -19,11 +22,14 @@ export function EnhancedAudioPlayer({
   title = "Unknown Track", 
   artist = "Unknown Artist", 
   albumArt,
-  className = "" 
+  className = "",
+  compact = false,
+  showWaveform = false,
+  duration: propDuration
 }: EnhancedAudioPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
-  const [duration, setDuration] = useState(0)
+  const [duration, setDuration] = useState(propDuration || 0)
   const [volume, setVolume] = useState(1)
   const [isMuted, setIsMuted] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -121,7 +127,7 @@ export function EnhancedAudioPlayer({
       
       <div className="flex items-center space-x-4">
         {/* Album Art */}
-        <div className="relative w-16 h-16 rounded-lg overflow-hidden bg-gray-800 flex-shrink-0">
+        <div className={`relative ${compact ? 'w-12 h-12' : 'w-16 h-16'} rounded-lg overflow-hidden bg-gray-800 flex-shrink-0`}>
           <Image
             src={albumArt || "/images/default-holographic-album-cover.png"}
             alt={`${title} album art`}
@@ -136,8 +142,8 @@ export function EnhancedAudioPlayer({
 
         {/* Track Info */}
         <div className="flex-1 min-w-0">
-          <h4 className="font-semibold text-sm truncate">{title}</h4>
-          <p className="text-xs text-gray-300 truncate">{artist}</p>
+          <h4 className={`font-semibold ${compact ? 'text-sm' : 'text-base'} truncate`}>{title}</h4>
+          <p className={`${compact ? 'text-xs' : 'text-sm'} text-gray-300 truncate`}>{artist}</p>
         </div>
 
         {/* Controls */}
@@ -159,15 +165,17 @@ export function EnhancedAudioPlayer({
             )}
           </Button>
 
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={toggleMute}
-            className="text-white hover:bg-white/20 p-2"
-          >
-            {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-          </Button>
+          {!compact && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={toggleMute}
+              className="text-white hover:bg-white/20 p-2"
+            >
+              {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -187,16 +195,18 @@ export function EnhancedAudioPlayer({
       </div>
 
       {/* Volume Control */}
-      <div className="mt-2 flex items-center space-x-2">
-        <Volume2 className="w-3 h-3 text-gray-400" />
-        <Slider
-          value={[isMuted ? 0 : volume]}
-          max={1}
-          step={0.1}
-          onValueChange={handleVolumeChange}
-          className="w-20"
-        />
-      </div>
+      {!compact && (
+        <div className="mt-2 flex items-center space-x-2">
+          <Volume2 className="w-3 h-3 text-gray-400" />
+          <Slider
+            value={[isMuted ? 0 : volume]}
+            max={1}
+            step={0.1}
+            onValueChange={handleVolumeChange}
+            className="w-20"
+          />
+        </div>
+      )}
     </div>
   )
 }
