@@ -7,24 +7,13 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import {
-  Database,
-  Search,
-  Shield,
-  Loader2,
-  CheckCircle,
-  AlertCircle,
-  User,
-  RefreshCw,
-  Play,
-  Settings,
-} from "lucide-react"
+import { Database, Search, Shield, Loader2, CheckCircle, AlertCircle, RefreshCw, Play, Settings } from "lucide-react"
 
 export default function DebugPage() {
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState<any>(null)
-  const [email, setEmail] = useState("2668harris@gmail.com")
-  const [password, setPassword] = useState("TMBM_MAgSTE68_HAR_20h24_SEC4URE")
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
 
   const runDatabaseTest = async () => {
     setLoading(true)
@@ -271,36 +260,23 @@ export default function DebugPage() {
                     />
                   </div>
                 </div>
-                <div className="flex space-x-2">
-                  <Button
-                    onClick={runAuthTest}
-                    disabled={loading || !email || !password}
-                    className="bg-purple-600 hover:bg-purple-700"
-                  >
-                    {loading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Testing...
-                      </>
-                    ) : (
-                      <>
-                        <Shield className="mr-2 h-4 w-4" />
-                        Test Authentication
-                      </>
-                    )}
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      setEmail("2668harris@gmail.com")
-                      setPassword("TMBM_MAgSTE68_HAR_20h24_SEC4URE")
-                    }}
-                    variant="outline"
-                    className="border-gray-600 bg-transparent"
-                  >
-                    <User className="mr-2 h-4 w-4" />
-                    Fill Master Dev
-                  </Button>
-                </div>
+                <Button
+                  onClick={runAuthTest}
+                  disabled={loading || !email || !password}
+                  className="bg-purple-600 hover:bg-purple-700"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Testing...
+                    </>
+                  ) : (
+                    <>
+                      <Shield className="mr-2 h-4 w-4" />
+                      Test Authentication
+                    </>
+                  )}
+                </Button>
               </CardContent>
             </Card>
           </TabsContent>
