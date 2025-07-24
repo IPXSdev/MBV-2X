@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { requireMasterDev } from "@/lib/supabase/auth"
 import { createClient } from "@/lib/supabase/server"

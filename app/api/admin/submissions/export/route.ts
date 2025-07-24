@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { type NextRequest, NextResponse } from "next/server"
 import { requireAdmin } from "@/lib/supabase/auth"
 import { createClient } from "@/lib/supabase/server"
@@ -15,20 +17,20 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from("submissions")
       .select(`
-        id,
-        track_title,
-        artist_name,
-        genre,
-        mood_tags,
-        file_url,
-        file_size,
-        status,
-        admin_rating,
-        admin_feedback,
-        submitted_at,
-        updated_at,
-        users:user_id (name, email, tier)
-      `)
+      id,
+      track_title,
+      artist_name,
+      genre,
+      mood_tags,
+      file_url,
+      file_size,
+      status,
+      admin_rating,
+      admin_feedback,
+      submitted_at,
+      updated_at,
+      users:user_id (name, email, tier)
+    `)
       .order("submitted_at", { ascending: false })
 
     if (status && status !== "all") {
