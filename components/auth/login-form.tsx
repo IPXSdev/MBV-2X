@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -9,69 +8,100 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Eye, EyeOff, Loader2 } from "lucide-react"
+import { Eye, EyeOff, LogIn } from "lucide-react"
+import Link from "next/link"
 import { useAuth } from "./auth-provider"
 
 export function LoginForm() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const router = useRouter()
   const { login } = useAuth()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setIsLoading(true)
     setError("")
+    setLoading(true)
 
     try {
-      await login(email, password)
-      router.push("/dashboard")
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "Login failed")
+      const result = await login(email, password)
+
+      if (result?.success) {
+        router.push("/dashboard")
+      } else {
+        setError(result?.error || "Login failed")
+      }
+    } catch (err) {
+      console.error("Login error:", err)
+      setError("An unexpected error occurred")
     } finally {
-      setIsLoading(false)
+      setLoading(false)
     }
   }
 
   const fillMasterDevCredentials = async () => {
     try {
+      // Fetch the master dev email from server
       const response = await fetch("/api/auth/get-master-dev-email")
       const data = await response.json()
 
-      if (data.email) {
+      if (data.success) {
         setEmail(data.email)
-        // Focus on password field for manual entry
-        const passwordInput = document.querySelector('input[type="password"]') as HTMLInputElement
-        if (passwordInput) {
-          passwordInput.focus()
+        setPassword("") // Don't pre-fill password for security
+        // Focus on password field
+        const passwordField = document.getElementById("password") as HTMLInputElement
+        if (passwordField) {
+          passwordField.focus()
         }
       }
     } catch (error) {
-      console.error("Failed to get master dev email:", error)
+      console.error("Error filling master dev credentials:", error)
+      // Fallback to just setting the email
+      setEmail("harris@tmbm.dev")
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-black p-4">
-      <div className="w-full max-w-md space-y-6">
-        <div className="text-center">
-          <h1 className="text-3xl font-bold text-white mb-2">Welcome Back</h1>
-          <p className="text-gray-400">Sign in to your TMBM account</p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
+      <div className="w-full max-w-lg space-y-8">
+        {/* Video Section - Square Frame */}
+        <div className="flex justify-center">
+          <div className="relative w-80 h-80 rounded-xl overflow-hidden bg-black/20 backdrop-blur-sm border border-white/10 shadow-2xl">
+            <video autoPlay loop muted playsInline className="w-full h-full object-cover">
+              <source src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/Welcome%20back%20%3A%20login%20visual-YnNO9wO2szXBs3Cv76kMVli0LsOcik.mp4" type="video/mp4" />
+            </video>
+            {/* Subtle overlay for better visual depth */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent pointer-events-none" />
+          </div>
         </div>
 
-        <Card className="bg-gray-900 border-gray-800">
-          <CardHeader>
-            <CardTitle className="text-white">Sign In</CardTitle>
-            <CardDescription className="text-gray-400">Enter your credentials to access your account</CardDescription>
+        {/* Login Card */}
+        <Card className="bg-black/40 backdrop-blur-md border-white/10 shadow-2xl">
+          <CardHeader className="text-center">
+            <div className="flex justify-center mb-4">
+              <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+                <LogIn className="w-6 h-6 text-white" />
+              </div>
+            </div>
+            <CardTitle className="text-2xl font-bold text-white">Welcome Back</CardTitle>
+            <CardDescription className="text-gray-300">
+              Sign in to continue your music journey with industry legends
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
+              {error && (
+                <Alert className="bg-red-500/10 border-red-500/20 text-red-400">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+
               <div className="space-y-2">
                 <Label htmlFor="email" className="text-white">
-                  Email
+                  Email Address
                 </Label>
                 <Input
                   id="email"
@@ -79,14 +109,14 @@ export function LoginForm() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  className="bg-gray-800 border-gray-700 text-white placeholder-gray-400"
+                  className="bg-white/10 border-white/20 text-white placeholder:text-gray-400 focus:border-blue-500 h-12 rounded-lg"
                   placeholder="Enter your email"
                 />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="password" className="text-white">
-                  Password
+                  Password / Master Key
                 </Label>
                 <div className="relative">
                   <Input
@@ -95,61 +125,79 @@ export function LoginForm() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
-                    className="bg-gray-800 border-gray-700 text-white placeholder-gray-400 pr-10"
+                    className="bg-white/10 border-white/20 text-white placeholder:text-gray-400 focus:border-blue-500 h-12 rounded-lg pr-12"
                     placeholder="Enter your password"
                   />
-                  <Button
+                  <button
                     type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                     onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white"
                   >
-                    {showPassword ? (
-                      <EyeOff className="h-4 w-4 text-gray-400" />
-                    ) : (
-                      <Eye className="h-4 w-4 text-gray-400" />
-                    )}
-                  </Button>
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
                 </div>
               </div>
 
-              {error && (
-                <Alert className="bg-red-900/20 border-red-900/50">
-                  <AlertDescription className="text-red-400">{error}</AlertDescription>
-                </Alert>
-              )}
-
-              <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white" disabled={isLoading}>
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Signing in...
-                  </>
+              <Button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold h-12 rounded-lg transition-all duration-200"
+              >
+                {loading ? (
+                  <div className="flex items-center justify-center">
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
+                    Signing In...
+                  </div>
                 ) : (
-                  "Sign In"
+                  <>
+                    <LogIn className="w-5 h-5 mr-2" />
+                    Sign In to Dashboard
+                  </>
                 )}
               </Button>
+            </form>
 
-              <div className="flex items-center justify-between text-sm">
+            <div className="mt-6 text-center space-y-4">
+              <p className="text-gray-400 text-sm">
+                Don't have an account?{" "}
+                <Link href="/signup" className="text-blue-400 hover:text-blue-300 font-medium">
+                  Join the community
+                </Link>
+              </p>
+
+              <div className="flex justify-center space-x-6 text-xs text-gray-500">
+                <span className="flex items-center">
+                  <div className="w-2 h-2 bg-green-500 rounded-full mr-1" />
+                  Secure Login
+                </span>
+                <span className="flex items-center">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full mr-1" />
+                  Instant Access
+                </span>
+                <span className="flex items-center">
+                  <div className="w-2 h-2 bg-purple-500 rounded-full mr-1" />
+                  Your Dashboard
+                </span>
+              </div>
+
+              <div className="pt-2">
+                <p className="text-xs text-gray-500 mb-2">
+                  Forgot your password?{" "}
+                  <Link href="/reset" className="text-blue-400 hover:text-blue-300">
+                    Reset here
+                  </Link>
+                </p>
+
                 <Button
                   type="button"
-                  variant="link"
-                  className="text-blue-400 hover:text-blue-300 p-0"
+                  variant="outline"
+                  className="w-full bg-transparent border-white/20 text-gray-300 hover:bg-white/10 mt-3"
                   onClick={fillMasterDevCredentials}
                 >
                   Fill Master Dev Email
                 </Button>
-                <Button
-                  type="button"
-                  variant="link"
-                  className="text-blue-400 hover:text-blue-300 p-0"
-                  onClick={() => router.push("/signup")}
-                >
-                  Create Account
-                </Button>
               </div>
-            </form>
+            </div>
           </CardContent>
         </Card>
       </div>

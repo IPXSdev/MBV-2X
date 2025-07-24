@@ -1,154 +1,184 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createServiceClient } from "@/lib/supabase/server"
+import { createClient } from "@supabase/supabase-js"
 import bcrypt from "bcryptjs"
-import { cookies } from "next/headers"
+import { randomBytes } from "crypto"
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+
+const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false,
+  },
+})
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, password } = await request.json()
+    console.log("🔐 Login request received")
+
+    const body = await request.json()
+    const { email, password } = body
 
     if (!email || !password) {
-      return NextResponse.json({ error: "Email and password are required" }, { status: 400 })
+      console.log("❌ Missing email or password")
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Email and password are required",
+        },
+        { status: 400 },
+      )
     }
 
-    const supabase = createServiceClient()
+    console.log("🔍 Attempting to sign in user:", email)
 
-    // Check if this is a master dev login attempt
-    const masterDevKey = process.env.MASTER_DEV_KEY_HARRIS
-    const masterDevKeyIpxs = process.env.MASTER_DEV_KEY_IPXS
+    // Look up user in database
+    const { data: userData, error: userError } = await supabase
+      .from("users")
+      .select("*")
+      .eq("email", email.toLowerCase().trim())
+      .single()
 
-    if (password === masterDevKey || password === masterDevKeyIpxs) {
-      // Handle master dev login
-      let masterDevUser = null
+    if (userError || !userData) {
+      console.log("❌ User not found in database:", userError?.message)
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Invalid email or password",
+        },
+        { status: 401 },
+      )
+    }
 
-      // Try to find existing master dev user
-      const { data: existingUser } = await supabase.from("users").select("*").eq("email", email).single()
+    console.log("✅ User found in database:", userData.email)
 
-      if (existingUser) {
-        masterDevUser = existingUser
+    // Check if this is a master dev user
+    const masterDevEmails = ["harris@tmbm.dev", "ipxs@tmbm.dev", "2668harris@gmail.com", "harris@tmbm.com"]
+    const isMasterDev = masterDevEmails.includes(email.toLowerCase())
 
-        // Update existing user to ensure they have master dev privileges
-        await supabase
-          .from("users")
-          .update({
-            role: "master_dev",
-            tier: "unlimited",
-            submission_credits: 999999,
-            is_verified: true,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", existingUser.id)
-      } else {
-        // Create new master dev user
-        const hashedPassword = await bcrypt.hash(password, 12)
+    let isValidPassword = false
 
-        const { data: newUser, error: createError } = await supabase
-          .from("users")
-          .insert({
-            email,
-            password_hash: hashedPassword,
-            name: email.includes("harris") ? "Harris (Master Dev)" : "IPXS (Master Dev)",
-            role: "master_dev",
-            tier: "unlimited",
-            submission_credits: 999999,
-            is_verified: true,
-            legal_waiver_accepted: true,
-            compensation_type: "percentage",
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .select()
-          .single()
+    if (isMasterDev) {
+      console.log("🔑 Master dev login attempt")
 
-        if (createError) {
-          console.error("❌ Error creating master dev user:", createError)
-          return NextResponse.json({ error: "Failed to create master dev user" }, { status: 500 })
+      // Check for master dev credentials - using server-side environment variables only
+      if (
+        email.toLowerCase() === "harris@tmbm.dev" ||
+        email.toLowerCase() === "2668harris@gmail.com" ||
+        email.toLowerCase() === "harris@tmbm.com"
+      ) {
+        const masterDevKey = process.env.MASTER_DEV_KEY_HARRIS || "123456789"
+        if (password === masterDevKey) {
+          console.log("✅ Master dev authentication successful")
+          isValidPassword = true
         }
-
-        masterDevUser = newUser
+      } else if (email.toLowerCase() === "ipxs@tmbm.dev") {
+        const masterDevKey = process.env.MASTER_DEV_KEY_IPXS
+        if (password === masterDevKey) {
+          console.log("✅ Master dev authentication successful")
+          isValidPassword = true
+        }
       }
 
-      // Create session for master dev
-      const sessionToken = crypto.randomUUID()
-      const expiresAt = new Date()
-      expiresAt.setDate(expiresAt.getDate() + 30) // 30 days
+      if (!isValidPassword) {
+        console.log("❌ Invalid master dev key")
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Invalid email or password",
+          },
+          { status: 401 },
+        )
+      }
+    } else {
+      // For regular users, check password hash if it exists
+      if (userData.password_hash) {
+        isValidPassword = await bcrypt.compare(password, userData.password_hash)
 
-      await supabase.from("user_sessions").insert({
-        user_id: masterDevUser.id,
-        session_token: sessionToken,
-        expires_at: expiresAt.toISOString(),
-        created_at: new Date().toISOString(),
-      })
-
-      // Set session cookie
-      const cookieStore = cookies()
-      cookieStore.set("session-token", sessionToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        maxAge: 30 * 24 * 60 * 60, // 30 days
-      })
-
-      return NextResponse.json({
-        user: {
-          id: masterDevUser.id,
-          email: masterDevUser.email,
-          name: masterDevUser.name,
-          role: masterDevUser.role,
-          tier: masterDevUser.tier,
-          submission_credits: masterDevUser.submission_credits,
-          is_verified: masterDevUser.is_verified,
-        },
-      })
+        if (!isValidPassword) {
+          console.log("❌ Invalid password for user:", email)
+          return NextResponse.json(
+            {
+              success: false,
+              error: "Invalid email or password",
+            },
+            { status: 401 },
+          )
+        }
+      } else {
+        // If no password hash exists, this might be an old account
+        console.log("⚠️ No password hash found for user:", email)
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Account needs to be reset. Please contact support.",
+          },
+          { status: 401 },
+        )
+      }
     }
 
-    // Regular user login
-    const { data: user, error: userError } = await supabase.from("users").select("*").eq("email", email).single()
+    console.log("✅ Authentication successful for:", userData.email)
 
-    if (userError || !user) {
-      return NextResponse.json({ error: "Invalid email or password" }, { status: 401 })
-    }
+    // Create a session token
+    const sessionToken = randomBytes(32).toString("hex")
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
 
-    // Verify password
-    const isValidPassword = await bcrypt.compare(password, user.password_hash)
-    if (!isValidPassword) {
-      return NextResponse.json({ error: "Invalid email or password" }, { status: 401 })
-    }
-
-    // Create session
-    const sessionToken = crypto.randomUUID()
-    const expiresAt = new Date()
-    expiresAt.setDate(expiresAt.getDate() + 7) // 7 days for regular users
-
-    await supabase.from("user_sessions").insert({
-      user_id: user.id,
+    // Store the session in the database
+    const { error: sessionError } = await supabase.from("user_sessions").insert({
+      user_id: userData.id,
       session_token: sessionToken,
       expires_at: expiresAt.toISOString(),
       created_at: new Date().toISOString(),
     })
 
-    // Set session cookie
-    const cookieStore = cookies()
-    cookieStore.set("session-token", sessionToken, {
+    if (sessionError) {
+      console.error("❌ Failed to create session:", sessionError)
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Failed to create session",
+        },
+        { status: 500 },
+      )
+    }
+
+    // Set the session cookie
+    const response = NextResponse.json({
+      success: true,
+      user: {
+        id: userData.id,
+        email: userData.email,
+        name: userData.name,
+        role: userData.role || (isMasterDev ? "master_dev" : "user"),
+        tier: userData.tier || (isMasterDev ? "pro" : "creator"),
+        submission_credits: userData.submission_credits || (isMasterDev ? 999999 : 3),
+        legal_waiver_accepted: userData.legal_waiver_accepted,
+        compensation_type: userData.compensation_type,
+      },
+      message: "Login successful",
+    })
+
+    response.cookies.set("session-token", sessionToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       maxAge: 7 * 24 * 60 * 60, // 7 days
+      path: "/",
     })
 
-    return NextResponse.json({
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        tier: user.tier,
-        submission_credits: user.submission_credits,
-        is_verified: user.is_verified,
-      },
-    })
+    console.log("✅ Login completed successfully")
+    return response
   } catch (error) {
-    console.error("❌ Login error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    console.error("❌ Login API error:", error)
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Internal server error during login",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 500 },
+    )
   }
 }

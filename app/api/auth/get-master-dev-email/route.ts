@@ -2,14 +2,13 @@ import { NextResponse } from "next/server"
 
 export async function GET() {
   try {
-    // Only return the email, not the sensitive key
-    const masterDevEmail = "harris@tmbm.com"
-
+    // Return the master dev email without exposing the key
     return NextResponse.json({
-      email: masterDevEmail,
+      success: true,
+      email: "harris@tmbm.dev",
     })
   } catch (error) {
-    console.error("❌ Error getting master dev email:", error)
-    return NextResponse.json({ error: "Failed to get master dev email" }, { status: 500 })
+    console.error("Error getting master dev email:", error)
+    return NextResponse.json({ success: false, error: "Failed to get master dev email" }, { status: 500 })
   }
 }

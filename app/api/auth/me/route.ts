@@ -1,22 +1,71 @@
-import { NextResponse } from "next/server"
-import { getCurrentUser } from "@/lib/supabase/auth"
+import { type NextRequest, NextResponse } from "next/server"
+import { createServiceClient } from "@/lib/supabase/server"
+import { cookies } from "next/headers"
 
-export const dynamic = "force-dynamic"
-
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    console.log("🔍 Checking user session...")
-    const user = await getCurrentUser()
+    const cookieStore = await cookies()
+    const sessionToken = cookieStore.get("session-token")?.value
 
-    if (!user) {
-      console.log("❌ No user session found")
-      return NextResponse.json({ user: null })
+    if (!sessionToken) {
+      return NextResponse.json({ error: "No session token" }, { status: 401 })
     }
 
-    console.log("✅ User session found:", user.email)
-    return NextResponse.json({ user })
+    const supabase = createServiceClient()
+
+    // Get user from session token
+    const { data, error } = await supabase
+      .from("user_sessions")
+      .select(`
+        user_id,
+        expires_at,
+        users (
+          id,
+          email,
+          name,
+          role,
+          tier,
+          submission_credits,
+          is_verified,
+          created_at,
+          updated_at,
+          legal_waiver_accepted,
+          compensation_type
+        )
+      `)
+      .eq("session_token", sessionToken)
+      .single()
+
+    if (error || !data || !data.users) {
+      return NextResponse.json({ error: "Invalid session" }, { status: 401 })
+    }
+
+    // Check if session is expired
+    if (new Date(data.expires_at) < new Date()) {
+      // Clean up expired session
+      await supabase.from("user_sessions").delete().eq("session_token", sessionToken)
+      return NextResponse.json({ error: "Session expired" }, { status: 401 })
+    }
+
+    const user = Array.isArray(data.users) ? data.users[0] : data.users
+
+    return NextResponse.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        tier: user.tier,
+        submission_credits: user.submission_credits,
+        is_verified: user.is_verified,
+        created_at: user.created_at,
+        updated_at: user.updated_at,
+        legal_waiver_accepted: user.legal_waiver_accepted,
+        compensation_type: user.compensation_type,
+      },
+    })
   } catch (error) {
-    console.error("❌ Session check error:", error)
-    return NextResponse.json({ user: null, error: "Session check failed" })
+    console.error("Error getting current user:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
