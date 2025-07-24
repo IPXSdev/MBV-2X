@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createServiceClient } from "@/lib/supabase/server"
+import { createClient } from "@supabase/supabase-js"
 
 export const dynamic = "force-dynamic"
 
@@ -7,7 +7,30 @@ export async function GET() {
   try {
     console.log("Starting bucket check...")
 
-    const supabase = createServiceClient()
+    // Check environment variables
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      return NextResponse.json({
+        success: false,
+        error: "Missing Supabase environment variables",
+        details: {
+          hasUrl: !!supabaseUrl,
+          hasServiceKey: !!supabaseServiceKey,
+        },
+      })
+    }
+
+    // Create service client
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    })
+
+    console.log("Created Supabase client")
 
     // Check if bucket exists
     const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets()
@@ -39,31 +62,14 @@ export async function GET() {
 
     console.log("Found audio-submissions bucket:", audioBucket)
 
-    // Test upload capability with proper audio file
+    // Create a minimal MP3 file for testing (silent 1-second MP3)
     const testFileName = `test-${Date.now()}.mp3`
 
-    // Create a minimal MP3 file buffer (just headers, not actual audio)
+    // This is a minimal valid MP3 file (silent, 1 second)
     const mp3Header = new Uint8Array([
-      0xff,
-      0xfb,
-      0x90,
-      0x00, // MP3 frame header
-      0x00,
-      0x00,
-      0x00,
-      0x00,
-      0x00,
-      0x00,
-      0x00,
-      0x00,
-      0x00,
-      0x00,
-      0x00,
-      0x00,
-      0x00,
-      0x00,
-      0x00,
-      0x00,
+      0xff, 0xfb, 0x90, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     ])
 
     console.log("Testing upload with file:", testFileName)

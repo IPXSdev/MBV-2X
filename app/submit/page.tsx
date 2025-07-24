@@ -104,10 +104,12 @@ export default function SubmitPage() {
     checking: boolean
     error: string | null
     details?: any
+    retryCount: number
   }>({
     exists: false,
     checking: true,
     error: null,
+    retryCount: 0,
   })
   const router = useRouter()
   const [audioDuration, setAudioDuration] = useState<number | null>(null)
@@ -147,11 +149,21 @@ export default function SubmitPage() {
   }
 
   const checkBucketStatus = async () => {
-    setBucketStatus({ exists: false, checking: true, error: null })
+    setBucketStatus((prev) => ({
+      ...prev,
+      checking: true,
+      error: null,
+      retryCount: prev.retryCount + 1,
+    }))
 
     try {
       console.log("Checking bucket status...")
-      const response = await fetch("/api/debug/simple-bucket-check")
+      const response = await fetch("/api/debug/simple-bucket-check", {
+        cache: "no-store",
+        headers: {
+          "Cache-Control": "no-cache",
+        },
+      })
 
       if (!response.ok) {
         const errorText = await response.text()
@@ -163,27 +175,30 @@ export default function SubmitPage() {
       console.log("Bucket status data:", data)
 
       if (data.success && data.uploadTest?.success) {
-        setBucketStatus({
+        setBucketStatus((prev) => ({
+          ...prev,
           exists: true,
           checking: false,
           error: null,
           details: data,
-        })
+        }))
       } else {
-        setBucketStatus({
+        setBucketStatus((prev) => ({
+          ...prev,
           exists: false,
           checking: false,
           error: data.error || "Audio submissions bucket not functional",
           details: data,
-        })
+        }))
       }
     } catch (error) {
       console.error("Bucket status check failed:", error)
-      setBucketStatus({
+      setBucketStatus((prev) => ({
+        ...prev,
         exists: false,
         checking: false,
         error: error instanceof Error ? error.message : "Failed to check bucket status",
-      })
+      }))
     }
   }
 
@@ -205,6 +220,8 @@ export default function SubmitPage() {
         "audio/x-m4a",
         "audio/ogg",
         "audio/webm",
+        "audio/vnd.wav",
+        "audio/x-ms-wma",
       ]
 
       if (!allowedTypes.includes(file.type)) {
@@ -485,7 +502,9 @@ export default function SubmitPage() {
         {bucketStatus.checking && (
           <Alert className="mb-6 bg-blue-500/20 border-blue-500/30">
             <RefreshCw className="h-4 w-4 animate-spin" />
-            <AlertDescription className="text-blue-300">Checking storage configuration...</AlertDescription>
+            <AlertDescription className="text-blue-300">
+              Checking storage configuration... (Attempt {bucketStatus.retryCount})
+            </AlertDescription>
           </Alert>
         )}
 
@@ -494,18 +513,18 @@ export default function SubmitPage() {
             <AlertCircle className="h-4 w-4" />
             <AlertDescription className="text-red-300">
               <div className="space-y-3">
-                <p className="font-medium">Storage bucket is not configured properly.</p>
+                <p className="font-medium">Storage bucket configuration issue detected.</p>
                 <div className="text-sm space-y-1">
                   <p>
                     <strong>Error:</strong> {bucketStatus.error}
                   </p>
-                  <p>Please refresh the page or contact support if the issue persists.</p>
+                  <p>This usually resolves automatically. Please try refreshing or contact support if it persists.</p>
                   {bucketStatus.details && (
                     <details className="mt-2">
                       <summary className="cursor-pointer text-red-200 hover:text-red-100">
                         Show technical details
                       </summary>
-                      <pre className="mt-2 p-2 bg-red-900/20 rounded text-xs overflow-auto">
+                      <pre className="mt-2 p-2 bg-red-900/20 rounded text-xs overflow-auto max-h-32">
                         {JSON.stringify(bucketStatus.details, null, 2)}
                       </pre>
                     </details>
@@ -518,9 +537,10 @@ export default function SubmitPage() {
                     size="sm"
                     variant="outline"
                     className="border-red-400 text-red-300 hover:bg-red-500/20 bg-transparent"
+                    disabled={bucketStatus.checking}
                   >
-                    <RefreshCw className="h-3 w-3 mr-1" />
-                    Retry Check
+                    <RefreshCw className={`h-3 w-3 mr-1 ${bucketStatus.checking ? "animate-spin" : ""}`} />
+                    {bucketStatus.checking ? "Checking..." : "Retry Check"}
                   </Button>
                   <Button
                     type="button"
@@ -732,7 +752,7 @@ export default function SubmitPage() {
               <div className="pt-6">
                 <Button
                   type="submit"
-                  disabled={submitting || !bucketStatus.exists}
+                  disabled={submitting || !bucketStatus.exists || (user && user.submission_credits === 0)}
                   className="w-full bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white font-semibold py-3 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {submitting ? (
@@ -743,7 +763,12 @@ export default function SubmitPage() {
                   ) : !bucketStatus.exists ? (
                     <>
                       <AlertCircle className="mr-2 h-5 w-5" />
-                      Storage Not Configured
+                      Storage Not Ready
+                    </>
+                  ) : user && user.submission_credits === 0 ? (
+                    <>
+                      <Zap className="mr-2 h-5 w-5" />
+                      No Credits Remaining
                     </>
                   ) : (
                     <>
@@ -756,7 +781,9 @@ export default function SubmitPage() {
                 <p className="text-center text-gray-400 text-sm mt-3">
                   {bucketStatus.exists
                     ? "You'll receive expert feedback within 48-72 hours"
-                    : "Please refresh the page to retry bucket configuration"}
+                    : bucketStatus.checking
+                      ? "Preparing storage system..."
+                      : "Storage system is being configured, please wait"}
                 </p>
               </div>
             </form>

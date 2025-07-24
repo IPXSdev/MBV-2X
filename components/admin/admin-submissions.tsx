@@ -1,603 +1,589 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Separator } from "@/components/ui/separator"
-import { EnhancedAudioPlayer } from "@/components/ui/enhanced-audio-player"
-import { FileAudio, Star, CheckCircle, XCircle, Clock, User, Calendar, Music, Download } from "lucide-react"
-import { formatRelativeTime, getStatusBadgeColor } from "@/lib/utils"
-import Image from "next/image"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Slider } from "@/components/ui/slider"
+import { Play, Pause, Star, Clock, User, Calendar, FileAudio, Download, Trash2, Check, X } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
 
 interface Submission {
   id: string
   track_title: string
   artist_name: string
-  genre?: string
-  status: "pending" | "in_review" | "approved" | "rejected"
+  description: string
+  file_path: string
+  file_size: number
+  duration: number
+  status: "pending" | "approved" | "rejected"
   admin_rating?: number
   admin_feedback?: string
-  created_at: string
-  updated_at?: string
-  file_url?: string
-  file_size?: number
-  duration?: number
-  mood_tags?: string[]
-  description?: string
-  credits_used?: number
   reviewed_by?: string
   reviewed_at?: string
-  users?: {
+  created_at: string
+  users: {
     id: string
-    name: string
+    username: string
     email: string
     tier: string
+    role: string
   }
+  audio_url?: string
 }
 
-interface Pagination {
-  total: number
-  page: number
-  limit: number
-  totalPages: number
+interface AdminSubmissionsProps {
+  currentUser: any
 }
 
-export function AdminSubmissions() {
+export default function AdminSubmissions({ currentUser }: AdminSubmissionsProps) {
   const [submissions, setSubmissions] = useState<Submission[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [filter, setFilter] = useState<"all" | "ranked" | "unranked" | "my_ranked">("unranked")
-  const [statusFilter, setStatusFilter] = useState<string | null>(null)
-  const [pagination, setPagination] = useState<Pagination>({
-    total: 0,
-    page: 1,
-    limit: 20,
-    totalPages: 0,
-  })
-  const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null)
-  const [reviewDialogOpen, setReviewDialogOpen] = useState(false)
+  const [filter, setFilter] = useState("all")
+  const [selectedSubmissions, setSelectedSubmissions] = useState<string[]>([])
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [playingId, setPlayingId] = useState<string | null>(null)
+  const [reviewingSubmission, setReviewingSubmission] = useState<Submission | null>(null)
   const [reviewData, setReviewData] = useState({
-    rating: 0,
+    status: "pending",
+    rating: 5,
     feedback: "",
-    status: "pending" as "pending" | "in_review" | "approved" | "rejected",
-    tags: [] as string[],
+    moodTags: [] as string[],
   })
-  const [submitting, setSubmitting] = useState(false)
+  const { toast } = useToast()
+
+  const moodOptions = [
+    "Energetic",
+    "Chill",
+    "Dark",
+    "Uplifting",
+    "Aggressive",
+    "Melodic",
+    "Atmospheric",
+    "Groovy",
+    "Emotional",
+    "Experimental",
+    "Commercial",
+    "Underground",
+  ]
 
   useEffect(() => {
-    loadSubmissions()
-  }, [filter, statusFilter, pagination.page])
+    fetchSubmissions()
+  }, [filter, currentPage])
 
-  const loadSubmissions = async () => {
+  const fetchSubmissions = async () => {
     try {
       setLoading(true)
-      setError(null)
+      const response = await fetch(`/api/admin/submissions?filter=${filter}&page=${currentPage}&limit=20`)
 
-      const queryParams = new URLSearchParams()
-      if (statusFilter) queryParams.append("status", statusFilter)
-      queryParams.append("filter", filter)
-      queryParams.append("page", pagination.page.toString())
-      queryParams.append("limit", pagination.limit.toString())
-
-      const response = await fetch(`/api/admin/submissions?${queryParams.toString()}`)
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to fetch submissions")
+        throw new Error("Failed to fetch submissions")
       }
 
       const data = await response.json()
-      setSubmissions(data.submissions || [])
-      setPagination(data.pagination)
+      setSubmissions(data.submissions)
+      setTotalPages(data.pagination.totalPages)
     } catch (error) {
-      console.error("Error loading submissions:", error)
-      setError(error instanceof Error ? error.message : "Failed to load submissions")
+      console.error("Error fetching submissions:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load submissions",
+        variant: "destructive",
+      })
     } finally {
       setLoading(false)
     }
   }
 
-  const openReviewDialog = (submission: Submission) => {
-    setSelectedSubmission(submission)
-    setReviewData({
-      rating: submission.admin_rating || 0,
-      feedback: submission.admin_feedback || "",
-      status: submission.status || "pending",
-      tags: submission.mood_tags || [],
-    })
-    setReviewDialogOpen(true)
-  }
-
-  const handleReviewSubmit = async () => {
-    if (!selectedSubmission) return
+  const handleBulkAction = async (action: string) => {
+    if (selectedSubmissions.length === 0) {
+      toast({
+        title: "No Selection",
+        description: "Please select submissions to perform bulk actions",
+        variant: "destructive",
+      })
+      return
+    }
 
     try {
-      setSubmitting(true)
-
-      const response = await fetch(`/api/admin/submissions/${selectedSubmission.id}/review`, {
+      const response = await fetch("/api/admin/submissions", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          rating: reviewData.rating,
-          feedback: reviewData.feedback,
-          status: reviewData.status,
-          mood_tags: reviewData.tags,
+          action,
+          submissionIds: selectedSubmissions,
         }),
       })
 
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to submit review")
+        throw new Error("Bulk action failed")
       }
 
-      // Update the submission in the local state
-      setSubmissions((prev) =>
-        prev.map((sub) =>
-          sub.id === selectedSubmission.id
-            ? {
-                ...sub,
-                admin_rating: reviewData.rating,
-                admin_feedback: reviewData.feedback,
-                status: reviewData.status,
-                mood_tags: reviewData.tags,
-                reviewed_at: new Date().toISOString(),
-              }
-            : sub,
-        ),
-      )
+      const result = await response.json()
+      toast({
+        title: "Success",
+        description: result.message,
+      })
 
-      setReviewDialogOpen(false)
-      setSelectedSubmission(null)
-
-      // Reload submissions to update filters
-      loadSubmissions()
+      setSelectedSubmissions([])
+      fetchSubmissions()
     } catch (error) {
-      console.error("Error submitting review:", error)
-      alert(error instanceof Error ? error.message : "Failed to submit review")
-    } finally {
-      setSubmitting(false)
+      console.error("Bulk action error:", error)
+      toast({
+        title: "Error",
+        description: "Failed to perform bulk action",
+        variant: "destructive",
+      })
     }
   }
 
-  const handleRatingChange = (rating: number) => {
-    setReviewData((prev) => ({ ...prev, rating }))
+  const handleReviewSubmission = async () => {
+    if (!reviewingSubmission) return
+
+    try {
+      const response = await fetch(`/api/admin/submissions/${reviewingSubmission.id}/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(reviewData),
+      })
+
+      if (!response.ok) {
+        throw new Error("Review failed")
+      }
+
+      const result = await response.json()
+      toast({
+        title: "Success",
+        description: result.message,
+      })
+
+      setReviewingSubmission(null)
+      setReviewData({ status: "pending", rating: 5, feedback: "", moodTags: [] })
+      fetchSubmissions()
+    } catch (error) {
+      console.error("Review error:", error)
+      toast({
+        title: "Error",
+        description: "Failed to review submission",
+        variant: "destructive",
+      })
+    }
   }
 
-  const handleStatusChange = (status: "pending" | "in_review" | "approved" | "rejected") => {
-    setReviewData((prev) => ({ ...prev, status }))
+  const togglePlayback = (submissionId: string) => {
+    if (playingId === submissionId) {
+      setPlayingId(null)
+    } else {
+      setPlayingId(submissionId)
+    }
   }
 
-  const handleTagToggle = (tag: string) => {
-    setReviewData((prev) => ({
-      ...prev,
-      tags: prev.tags.includes(tag) ? prev.tags.filter((t) => t !== tag) : [...prev.tags, tag],
-    }))
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return "0 Bytes"
+    const k = 1024
+    const sizes = ["Bytes", "KB", "MB", "GB"]
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return Number.parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i]
   }
 
-  if (error) {
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = Math.floor(seconds % 60)
+    return `${mins}:${secs.toString().padStart(2, "0")}`
+  }
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "approved":
+        return "bg-green-500"
+      case "rejected":
+        return "bg-red-500"
+      default:
+        return "bg-yellow-500"
+    }
+  }
+
+  const getTierColor = (tier: string) => {
+    switch (tier) {
+      case "pro":
+        return "bg-purple-500"
+      case "indie":
+        return "bg-blue-500"
+      default:
+        return "bg-gray-500"
+    }
+  }
+
+  if (loading) {
     return (
-      <div className="p-6">
-        <Card className="bg-gray-800 border-gray-700">
-          <CardHeader>
-            <CardTitle className="text-white">Error Loading Submissions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-red-400">{error}</p>
-            <Button onClick={loadSubmissions} className="mt-4">
-              Try Again
-            </Button>
-          </CardContent>
-        </Card>
+      <div className="flex items-center justify-center p-8">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading submissions...</p>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="p-6">
-      <Card className="bg-gray-800 border-gray-700 mb-6">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <FileAudio className="h-5 w-5 text-gray-400" />
-              <CardTitle className="text-white">Submissions</CardTitle>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Badge className="bg-purple-500">{pagination.total} Total</Badge>
-            </div>
-          </div>
-          <CardDescription className="text-gray-400">
-            Review and manage all music submissions from users
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {/* Filters */}
-            <div className="flex flex-wrap gap-4">
-              <Tabs
-                value={filter}
-                onValueChange={(value) => setFilter(value as "all" | "ranked" | "unranked" | "my_ranked")}
-                className="w-full"
-              >
-                <TabsList className="bg-gray-700">
-                  <TabsTrigger value="unranked" className="data-[state=active]:bg-gray-600">
-                    Unranked ({submissions.filter((s) => !s.admin_rating).length})
-                  </TabsTrigger>
-                  <TabsTrigger value="ranked" className="data-[state=active]:bg-gray-600">
-                    Ranked ({submissions.filter((s) => s.admin_rating).length})
-                  </TabsTrigger>
-                  <TabsTrigger value="my_ranked" className="data-[state=active]:bg-gray-600">
-                    My Ranked
-                  </TabsTrigger>
-                  <TabsTrigger value="all" className="data-[state=active]:bg-gray-600">
-                    All
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
+    <div className="space-y-6">
+      {/* Header and Controls */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Submissions Management</h2>
+          <p className="text-gray-600">Review and manage user submissions</p>
+        </div>
 
-              <Tabs
-                value={statusFilter || "all"}
-                onValueChange={(value) => setStatusFilter(value === "all" ? null : value)}
-                className="w-full"
-              >
-                <TabsList className="bg-gray-700">
-                  <TabsTrigger value="all" className="data-[state=active]:bg-gray-600">
-                    All Status
-                  </TabsTrigger>
-                  <TabsTrigger value="pending" className="data-[state=active]:bg-gray-600">
-                    Pending
-                  </TabsTrigger>
-                  <TabsTrigger value="in_review" className="data-[state=active]:bg-gray-600">
-                    In Review
-                  </TabsTrigger>
-                  <TabsTrigger value="approved" className="data-[state=active]:bg-gray-600">
-                    Approved
-                  </TabsTrigger>
-                  <TabsTrigger value="rejected" className="data-[state=active]:bg-gray-600">
-                    Rejected
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
-            </div>
+        <div className="flex flex-wrap gap-2">
+          <Select value={filter} onValueChange={setFilter}>
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Submissions</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="approved">Approved</SelectItem>
+              <SelectItem value="rejected">Rejected</SelectItem>
+              <SelectItem value="ranked">Ranked</SelectItem>
+              <SelectItem value="unranked">Unranked</SelectItem>
+              <SelectItem value="my_ranked">My Ranked</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
 
-            {/* Submissions List */}
-            {loading ? (
-              <div className="text-center py-12">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-4"></div>
-                <p className="text-white">Loading submissions...</p>
+      {/* Bulk Actions */}
+      {selectedSubmissions.length > 0 && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-600">{selectedSubmissions.length} submission(s) selected</span>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleBulkAction("bulk_approve")}
+                  className="text-green-600 hover:text-green-700"
+                >
+                  <Check className="w-4 h-4 mr-1" />
+                  Approve
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleBulkAction("bulk_reject")}
+                  className="text-red-600 hover:text-red-700"
+                >
+                  <X className="w-4 h-4 mr-1" />
+                  Reject
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleBulkAction("bulk_delete")}
+                  className="text-red-600 hover:text-red-700"
+                >
+                  <Trash2 className="w-4 h-4 mr-1" />
+                  Delete
+                </Button>
               </div>
-            ) : submissions.length === 0 ? (
-              <div className="text-center py-12 bg-gray-700/50 rounded-lg">
-                <Music className="h-12 w-12 text-gray-500 mx-auto mb-4" />
-                <p className="text-gray-400 font-medium">No submissions found</p>
-                <p className="text-gray-500 text-sm mt-2">Try changing your filters or check back later</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {submissions.map((submission) => (
-                  <div
-                    key={submission.id}
-                    className="p-4 bg-gray-700/50 rounded-lg hover:bg-gray-700/70 transition-colors duration-200"
-                  >
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex items-center space-x-4">
-                        <div className="relative w-12 h-12 flex-shrink-0">
-                          <Image
-                            src="/images/default-album-art.png"
-                            alt="Album Art"
-                            width={48}
-                            height={48}
-                            className="rounded-lg object-cover"
-                          />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="text-white font-medium truncate">{submission.track_title}</h4>
-                          <p className="text-gray-400 text-sm">by {submission.artist_name}</p>
-                          <div className="flex items-center space-x-2 mt-1">
-                            <Badge className={`${getStatusBadgeColor(submission.status)} text-white text-xs`}>
-                              {submission.status.replace("_", " ")}
-                            </Badge>
-                            <span className="text-gray-500 text-xs">{formatRelativeTime(submission.created_at)}</span>
-                            {submission.users && (
-                              <Badge variant="outline" className="text-xs border-gray-500 text-gray-300">
-                                {submission.users.tier}
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Submissions List */}
+      <div className="grid gap-4">
+        {submissions.map((submission) => (
+          <Card key={submission.id} className="hover:shadow-md transition-shadow">
+            <CardContent className="p-6">
+              <div className="flex items-start justify-between">
+                <div className="flex items-start gap-4 flex-1">
+                  <Checkbox
+                    checked={selectedSubmissions.includes(submission.id)}
+                    onCheckedChange={(checked) => {
+                      if (checked) {
+                        setSelectedSubmissions([...selectedSubmissions, submission.id])
+                      } else {
+                        setSelectedSubmissions(selectedSubmissions.filter((id) => id !== submission.id))
+                      }
+                    }}
+                  />
+
+                  <div className="flex-1 space-y-3">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h3 className="font-semibold text-lg text-gray-900">{submission.track_title || "Untitled"}</h3>
+                        <p className="text-gray-600">by {submission.artist_name || "Unknown Artist"}</p>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        {submission.admin_rating ? (
-                          <div className="flex items-center space-x-1">
-                            <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                            <span className="text-yellow-400 text-sm font-medium">{submission.admin_rating}/5</span>
-                          </div>
-                        ) : (
-                          <Badge variant="outline" className="text-xs border-gray-500 text-gray-300">
-                            Unrated
+
+                      <div className="flex items-center gap-2">
+                        <Badge className={`${getStatusColor(submission.status)} text-white`}>{submission.status}</Badge>
+                        <Badge className={`${getTierColor(submission.users.tier)} text-white`}>
+                          {submission.users.tier}
+                        </Badge>
+                        {submission.admin_rating && (
+                          <Badge variant="outline" className="flex items-center gap-1">
+                            <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
+                            {submission.admin_rating}/10
                           </Badge>
                         )}
-                        {submission.file_url && (
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-600">
+                      <div className="flex items-center gap-1">
+                        <User className="w-4 h-4" />
+                        {submission.users.username}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Clock className="w-4 h-4" />
+                        {formatDuration(submission.duration)}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <FileAudio className="w-4 h-4" />
+                        {formatFileSize(submission.file_size)}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Calendar className="w-4 h-4" />
+                        {new Date(submission.created_at).toLocaleDateString()}
+                      </div>
+                    </div>
+
+                    {submission.description && (
+                      <p className="text-gray-700 text-sm bg-gray-50 p-3 rounded">{submission.description}</p>
+                    )}
+
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => togglePlayback(submission.id)}
+                        className="flex items-center gap-1"
+                      >
+                        {playingId === submission.id ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                        {playingId === submission.id ? "Pause" : "Play"}
+                      </Button>
+
+                      <Dialog>
+                        <DialogTrigger asChild>
                           <Button
-                            variant="outline"
                             size="sm"
-                            onClick={() => window.open(submission.file_url, "_blank")}
-                            className="border-gray-600 bg-transparent hover:bg-gray-600"
+                            onClick={() => {
+                              setReviewingSubmission(submission)
+                              setReviewData({
+                                status: submission.status,
+                                rating: submission.admin_rating || 5,
+                                feedback: submission.admin_feedback || "",
+                                moodTags: [],
+                              })
+                            }}
                           >
-                            <Download className="h-3 w-3" />
+                            Review
                           </Button>
-                        )}
+                        </DialogTrigger>
+                        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                          <DialogHeader>
+                            <DialogTitle>Review Submission</DialogTitle>
+                          </DialogHeader>
+
+                          {reviewingSubmission && (
+                            <div className="space-y-6">
+                              <div>
+                                <h3 className="font-semibold text-lg">{reviewingSubmission.track_title}</h3>
+                                <p className="text-gray-600">by {reviewingSubmission.artist_name}</p>
+                              </div>
+
+                              <Tabs defaultValue="review" className="w-full">
+                                <TabsList className="grid w-full grid-cols-2">
+                                  <TabsTrigger value="review">Review</TabsTrigger>
+                                  <TabsTrigger value="details">Details</TabsTrigger>
+                                </TabsList>
+
+                                <TabsContent value="review" className="space-y-4">
+                                  <div>
+                                    <Label htmlFor="status">Status</Label>
+                                    <Select
+                                      value={reviewData.status}
+                                      onValueChange={(value) => setReviewData({ ...reviewData, status: value })}
+                                    >
+                                      <SelectTrigger>
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="pending">Pending</SelectItem>
+                                        <SelectItem value="approved">Approved</SelectItem>
+                                        <SelectItem value="rejected">Rejected</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+
+                                  <div>
+                                    <Label>Rating: {reviewData.rating}/10</Label>
+                                    <Slider
+                                      value={[reviewData.rating]}
+                                      onValueChange={(value) => setReviewData({ ...reviewData, rating: value[0] })}
+                                      max={10}
+                                      min={1}
+                                      step={1}
+                                      className="mt-2"
+                                    />
+                                  </div>
+
+                                  <div>
+                                    <Label htmlFor="feedback">Feedback</Label>
+                                    <Textarea
+                                      id="feedback"
+                                      value={reviewData.feedback}
+                                      onChange={(e) => setReviewData({ ...reviewData, feedback: e.target.value })}
+                                      placeholder="Provide feedback for the artist..."
+                                      rows={4}
+                                    />
+                                  </div>
+
+                                  <div>
+                                    <Label>Mood Tags</Label>
+                                    <div className="grid grid-cols-3 gap-2 mt-2">
+                                      {moodOptions.map((mood) => (
+                                        <div key={mood} className="flex items-center space-x-2">
+                                          <Checkbox
+                                            id={mood}
+                                            checked={reviewData.moodTags.includes(mood)}
+                                            onCheckedChange={(checked) => {
+                                              if (checked) {
+                                                setReviewData({
+                                                  ...reviewData,
+                                                  moodTags: [...reviewData.moodTags, mood],
+                                                })
+                                              } else {
+                                                setReviewData({
+                                                  ...reviewData,
+                                                  moodTags: reviewData.moodTags.filter((tag) => tag !== mood),
+                                                })
+                                              }
+                                            }}
+                                          />
+                                          <Label htmlFor={mood} className="text-sm">
+                                            {mood}
+                                          </Label>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+
+                                  <Button onClick={handleReviewSubmission} className="w-full">
+                                    Submit Review
+                                  </Button>
+                                </TabsContent>
+
+                                <TabsContent value="details" className="space-y-4">
+                                  <div className="grid grid-cols-2 gap-4 text-sm">
+                                    <div>
+                                      <Label className="font-medium">Submitted by</Label>
+                                      <p>{reviewingSubmission.users.username}</p>
+                                    </div>
+                                    <div>
+                                      <Label className="font-medium">User Tier</Label>
+                                      <p className="capitalize">{reviewingSubmission.users.tier}</p>
+                                    </div>
+                                    <div>
+                                      <Label className="font-medium">File Size</Label>
+                                      <p>{formatFileSize(reviewingSubmission.file_size)}</p>
+                                    </div>
+                                    <div>
+                                      <Label className="font-medium">Duration</Label>
+                                      <p>{formatDuration(reviewingSubmission.duration)}</p>
+                                    </div>
+                                    <div>
+                                      <Label className="font-medium">Submitted</Label>
+                                      <p>{new Date(reviewingSubmission.created_at).toLocaleString()}</p>
+                                    </div>
+                                    {reviewingSubmission.reviewed_at && (
+                                      <div>
+                                        <Label className="font-medium">Last Reviewed</Label>
+                                        <p>{new Date(reviewingSubmission.reviewed_at).toLocaleString()}</p>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {reviewingSubmission.description && (
+                                    <div>
+                                      <Label className="font-medium">Description</Label>
+                                      <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded mt-1">
+                                        {reviewingSubmission.description}
+                                      </p>
+                                    </div>
+                                  )}
+                                </TabsContent>
+                              </Tabs>
+                            </div>
+                          )}
+                        </DialogContent>
+                      </Dialog>
+
+                      {submission.file_path && (
                         <Button
                           size="sm"
-                          onClick={() => openReviewDialog(submission)}
-                          className="bg-purple-600 hover:bg-purple-700"
+                          variant="outline"
+                          onClick={() => {
+                            // Download functionality would go here
+                            window.open(submission.audio_url || "#", "_blank")
+                          }}
                         >
-                          Review
+                          <Download className="w-4 h-4 mr-1" />
+                          Download
                         </Button>
-                      </div>
+                      )}
                     </div>
-
-                    {/* Enhanced Audio Player */}
-                    {submission.file_url && (
-                      <EnhancedAudioPlayer
-                        src={submission.file_url}
-                        title={submission.track_title}
-                        artist={submission.artist_name}
-                        duration={submission.duration}
-                        compact={true}
-                        showWaveform={true}
-                      />
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Pagination */}
-            {pagination.totalPages > 1 && (
-              <div className="flex justify-center mt-6 space-x-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPagination((prev) => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
-                  disabled={pagination.page === 1 || loading}
-                  className="border-gray-600 bg-transparent hover:bg-gray-600"
-                >
-                  Previous
-                </Button>
-                <div className="flex items-center space-x-1">
-                  {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
-                    const pageNumber =
-                      pagination.page <= 3
-                        ? i + 1
-                        : pagination.page >= pagination.totalPages - 2
-                          ? pagination.totalPages - 4 + i
-                          : pagination.page - 2 + i
-
-                    if (pageNumber > 0 && pageNumber <= pagination.totalPages) {
-                      return (
-                        <Button
-                          key={pageNumber}
-                          variant={pagination.page === pageNumber ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setPagination((prev) => ({ ...prev, page: pageNumber }))}
-                          disabled={loading}
-                          className={
-                            pagination.page === pageNumber
-                              ? "bg-purple-600 hover:bg-purple-700"
-                              : "border-gray-600 bg-transparent hover:bg-gray-600"
-                          }
-                        >
-                          {pageNumber}
-                        </Button>
-                      )
-                    }
-                    return null
-                  })}
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPagination((prev) => ({ ...prev, page: Math.min(prev.totalPages, prev.page + 1) }))}
-                  disabled={pagination.page === pagination.totalPages || loading}
-                  className="border-gray-600 bg-transparent hover:bg-gray-600"
-                >
-                  Next
-                </Button>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Review Dialog */}
-      <Dialog open={reviewDialogOpen} onOpenChange={setReviewDialogOpen}>
-        <DialogContent className="bg-gray-800 border-gray-700 text-white max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-white text-xl">Review Submission</DialogTitle>
-          </DialogHeader>
-          {selectedSubmission && (
-            <div className="space-y-6">
-              {/* Enhanced Audio Player in Dialog */}
-              {selectedSubmission.file_url && (
-                <EnhancedAudioPlayer
-                  src={selectedSubmission.file_url}
-                  title={selectedSubmission.track_title}
-                  artist={selectedSubmission.artist_name}
-                  duration={selectedSubmission.duration}
-                  showWaveform={true}
-                />
-              )}
-
-              <div className="flex flex-col md:flex-row gap-6">
-                <div className="md:w-1/3 space-y-4">
-                  <div className="flex items-center space-x-4">
-                    <div className="relative w-16 h-16 flex-shrink-0">
-                      <Image
-                        src="/images/default-album-art.png"
-                        alt="Album Art"
-                        width={64}
-                        height={64}
-                        className="rounded-lg object-cover"
-                      />
-                    </div>
-                    <div>
-                      <h3 className="text-white font-medium text-lg">{selectedSubmission.track_title}</h3>
-                      <p className="text-gray-400">by {selectedSubmission.artist_name}</p>
-                      <div className="flex items-center space-x-2 mt-2">
-                        <Badge className={`${getStatusBadgeColor(selectedSubmission.status)} text-white`}>
-                          {selectedSubmission.status.replace("_", " ")}
-                        </Badge>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center space-x-2">
-                      <User className="h-4 w-4 text-gray-400" />
-                      <span className="text-gray-300 text-sm">{selectedSubmission.users?.name || "Unknown User"}</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Calendar className="h-4 w-4 text-gray-400" />
-                      <span className="text-gray-300 text-sm">
-                        {new Date(selectedSubmission.created_at).toLocaleDateString()}
-                      </span>
-                    </div>
-                    {selectedSubmission.genre && (
-                      <div className="flex items-center space-x-2">
-                        <Music className="h-4 w-4 text-gray-400" />
-                        <span className="text-gray-300 text-sm">{selectedSubmission.genre}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div className="md:w-2/3 space-y-6">
-                  <div>
-                    <h4 className="text-white font-medium mb-2">Rating</h4>
-                    <div className="flex space-x-2">
-                      {[1, 2, 3, 4, 5].map((rating) => (
-                        <Button
-                          key={rating}
-                          variant={reviewData.rating === rating ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => handleRatingChange(rating)}
-                          className={
-                            reviewData.rating === rating
-                              ? "bg-yellow-500 hover:bg-yellow-600 text-white"
-                              : "border-gray-600"
-                          }
-                        >
-                          <Star className={`h-4 w-4 ${reviewData.rating >= rating ? "fill-current" : ""}`} />
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <h4 className="text-white font-medium mb-2">Status</h4>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        variant={reviewData.status === "pending" ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => handleStatusChange("pending")}
-                        className={
-                          reviewData.status === "pending" ? "bg-yellow-500 hover:bg-yellow-600" : "border-gray-600"
-                        }
-                      >
-                        <Clock className="h-4 w-4 mr-1" /> Pending
-                      </Button>
-                      <Button
-                        variant={reviewData.status === "in_review" ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => handleStatusChange("in_review")}
-                        className={
-                          reviewData.status === "in_review" ? "bg-blue-500 hover:bg-blue-600" : "border-gray-600"
-                        }
-                      >
-                        <Clock className="h-4 w-4 mr-1" /> In Review
-                      </Button>
-                      <Button
-                        variant={reviewData.status === "approved" ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => handleStatusChange("approved")}
-                        className={
-                          reviewData.status === "approved" ? "bg-green-500 hover:bg-green-600" : "border-gray-600"
-                        }
-                      >
-                        <CheckCircle className="h-4 w-4 mr-1" /> Approved
-                      </Button>
-                      <Button
-                        variant={reviewData.status === "rejected" ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => handleStatusChange("rejected")}
-                        className={reviewData.status === "rejected" ? "bg-red-500 hover:bg-red-600" : "border-gray-600"}
-                      >
-                        <XCircle className="h-4 w-4 mr-1" /> Rejected
-                      </Button>
-                    </div>
-                  </div>
-                  <div>
-                    <h4 className="text-white font-medium mb-2">Mood Tags</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {[
-                        "Energetic",
-                        "Chill",
-                        "Dark",
-                        "Uplifting",
-                        "Melancholic",
-                        "Aggressive",
-                        "Romantic",
-                        "Mysterious",
-                        "Playful",
-                        "Intense",
-                        "Dreamy",
-                        "Nostalgic",
-                      ].map((tag) => (
-                        <Badge
-                          key={tag}
-                          variant={reviewData.tags.includes(tag) ? "default" : "outline"}
-                          className={`cursor-pointer ${
-                            reviewData.tags.includes(tag)
-                              ? "bg-purple-500 hover:bg-purple-600"
-                              : "border-gray-600 text-gray-300 hover:bg-gray-700"
-                          }`}
-                          onClick={() => handleTagToggle(tag)}
-                        >
-                          {tag}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <h4 className="text-white font-medium mb-2">Feedback</h4>
-                    <Textarea
-                      value={reviewData.feedback}
-                      onChange={(e) => setReviewData((prev) => ({ ...prev, feedback: e.target.value }))}
-                      placeholder="Provide feedback for the artist..."
-                      className="bg-gray-700 border-gray-600 text-white placeholder-gray-400 min-h-[120px]"
-                    />
                   </div>
                 </div>
               </div>
-              <Separator className="bg-gray-700" />
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setReviewDialogOpen(false)} className="border-gray-600">
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleReviewSubmit}
-                  disabled={submitting}
-                  className="bg-purple-600 hover:bg-purple-700"
-                >
-                  {submitting ? "Submitting..." : "Submit Review"}
-                </Button>
-              </DialogFooter>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex justify-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+            disabled={currentPage === 1}
+          >
+            Previous
+          </Button>
+          <span className="flex items-center px-4 text-sm text-gray-600">
+            Page {currentPage} of {totalPages}
+          </span>
+          <Button
+            variant="outline"
+            onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+            disabled={currentPage === totalPages}
+          >
+            Next
+          </Button>
+        </div>
+      )}
+
+      {submissions.length === 0 && (
+        <Card>
+          <CardContent className="p-8 text-center">
+            <FileAudio className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No submissions found</h3>
+            <p className="text-gray-600">
+              {filter === "all" ? "No submissions have been made yet." : `No submissions match the "${filter}" filter.`}
+            </p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }
