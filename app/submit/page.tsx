@@ -1,777 +1,393 @@
-"use client"
-import { useState, useEffect } from "react"
-import type React from "react"
-import { useRouter } from "next/navigation"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Progress } from "@/components/ui/progress"
-import { EnhancedAudioPlayer } from "@/components/ui/enhanced-audio-player"
-import { Upload, Tag, FileAudio, CheckCircle, AlertCircle, Zap, Crown, Star, Clock, ArrowLeft, Music, Sparkles, RefreshCw, Settings } from 'lucide-react'
-import { createClient } from "@/lib/supabase/client"
+'use client'
 
-interface SubmissionUser {
-  id: string
-  name: string
-  email: string
-  tier: "creator" | "indie" | "pro"
-  submission_credits: number
-  role: string
-}
+import { useState, useRef } from 'react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
+import { EnhancedAudioPlayer } from '@/components/ui/enhanced-audio-player'
+import { Upload, Music, CheckCircle, AlertCircle } from 'lucide-react'
 
-const genres = [
-  "Hip Hop",
-  "R&B",
-  "Pop",
-  "Rock",
-  "Electronic",
-  "Jazz",
-  "Blues",
-  "Country",
-  "Folk",
-  "Classical",
-  "Reggae",
-  "Latin",
-  "World",
-  "Alternative",
-  "Indie",
-  "Funk",
-  "Soul",
-  "Gospel",
-  "Trap",
-  "Drill",
-  "Afrobeats",
-  "Other",
+const MOOD_TAGS = [
+  'Energetic', 'Chill', 'Dark', 'Uplifting', 'Aggressive', 'Romantic',
+  'Melancholic', 'Party', 'Introspective', 'Confident', 'Dreamy', 'Raw'
 ]
 
-const moodTags = [
-  "Energetic",
-  "Chill",
-  "Dark",
-  "Uplifting",
-  "Melancholic",
-  "Aggressive",
-  "Romantic",
-  "Mysterious",
-  "Playful",
-  "Intense",
-  "Dreamy",
-  "Nostalgic",
-  "Powerful",
-  "Smooth",
-  "Raw",
-  "Cinematic",
-  "Atmospheric",
-  "Groovy",
-  "Emotional",
-  "Epic",
+const GENRE_OPTIONS = [
+  'Hip Hop', 'R&B', 'Pop', 'Rock', 'Electronic', 'Jazz', 'Blues', 'Country', 'Other'
 ]
 
 export default function SubmitPage() {
-  const [user, setUser] = useState<SubmissionUser | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [submitting, setSubmitting] = useState(false)
-  const [uploadProgress, setUploadProgress] = useState(0)
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [selectedMoodTag, setSelectedMoodTag] = useState<string>("")
   const [formData, setFormData] = useState({
-    title: "",
-    artistName: "",
-    genre: "",
+    title: '',
+    artist: '',
+    genre: '',
+    description: '',
+    mood_tags: [] as string[],
+    contact_email: '',
+    contact_phone: '',
+    social_media: ''
   })
-  const [errors, setErrors] = useState<Record<string, string>>({})
-  const [success, setSuccess] = useState(false)
-  const [bucketStatus, setBucketStatus] = useState<{
-    exists: boolean
-    checking: boolean
-    error: string | null
-    details?: any
-  }>({
-    exists: false,
-    checking: true,
-    error: null,
-  })
-  const router = useRouter()
-  const [audioDuration, setAudioDuration] = useState<number | null>(null)
-  const [audioUrl, setAudioUrl] = useState<string | null>(null)
+  
+  const [audioFile, setAudioFile] = useState<File | null>(null)
+  const [audioPreview, setAudioPreview] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle')
+  const [errorMessage, setErrorMessage] = useState('')
+  
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    checkAuth()
-    checkBucketStatus()
-  }, [])
-
-  const checkAuth = async () => {
-    try {
-      const response = await fetch("/api/auth/me")
-      if (response.ok) {
-        const userData = await response.json()
-        setUser(userData.user)
-
-        // Check if user can submit
-        if (userData.user.tier === "creator" && userData.user.submission_credits === 0) {
-          router.push("/pricing?reason=submit")
-          return
-        }
-
-        if (userData.user.submission_credits === 0 && userData.user.role !== "master_dev") {
-          router.push("/pricing?reason=credits")
-          return
-        }
-      } else {
-        router.push("/login?redirect=/submit")
-      }
-    } catch (error) {
-      console.error("Auth check failed:", error)
-      router.push("/login?redirect=/submit")
-    } finally {
-      setLoading(false)
-    }
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target
+    setFormData(prev => ({ ...prev, [name]: value }))
   }
 
-  const checkBucketStatus = async () => {
-    setBucketStatus({ exists: false, checking: true, error: null })
-
-    try {
-      console.log("Checking bucket status...")
-      const response = await fetch("/api/debug/simple-bucket-check")
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error("Bucket status error response:", errorText)
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-      }
-
-      const data = await response.json()
-      console.log("Bucket status data:", data)
-
-      if (data.success && data.uploadTest?.success) {
-        setBucketStatus({
-          exists: true,
-          checking: false,
-          error: null,
-          details: data,
-        })
-      } else {
-        setBucketStatus({
-          exists: false,
-          checking: false,
-          error: data.error || "Audio submissions bucket not functional",
-          details: data,
-        })
-      }
-    } catch (error) {
-      console.error("Bucket status check failed:", error)
-      setBucketStatus({
-        exists: false,
-        checking: false,
-        error: error instanceof Error ? error.message : "Failed to check bucket status",
-      })
-    }
+  const handleMoodToggle = (mood: string) => {
+    setFormData(prev => ({
+      ...prev,
+      mood_tags: prev.mood_tags.includes(mood)
+        ? prev.mood_tags.filter(tag => tag !== mood)
+        : [...prev.mood_tags, mood]
+    }))
   }
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
     if (file) {
       // Validate file type
-      const allowedTypes = [
-        "audio/mpeg",
-        "audio/mp3",
-        "audio/wav",
-        "audio/wave",
-        "audio/x-wav",
-        "audio/flac",
-        "audio/x-flac",
-        "audio/aac",
-        "audio/mp4",
-        "audio/m4a",
-        "audio/x-m4a",
-        "audio/ogg",
-        "audio/webm",
-      ]
-
-      if (!allowedTypes.includes(file.type)) {
-        setErrors({ file: "Please select a valid audio file (MP3, WAV, FLAC, AAC, M4A, OGG)" })
+      const validTypes = ['audio/mpeg', 'audio/wav', 'audio/mp3', 'audio/m4a', 'audio/aac']
+      if (!validTypes.includes(file.type)) {
+        setErrorMessage('Please upload a valid audio file (MP3, WAV, M4A, AAC)')
         return
       }
 
       // Validate file size (50MB limit)
-      if (file.size > 52428800) {
-        setErrors({ file: "File size must be less than 50MB" })
+      if (file.size > 50 * 1024 * 1024) {
+        setErrorMessage('File size must be less than 50MB')
         return
       }
 
-      setSelectedFile(file)
-      setErrors({ ...errors, file: "" })
-
-      // Create URL for audio preview
-      const url = URL.createObjectURL(file)
-      setAudioUrl(url)
-
-      // Create audio element to get duration
-      const audio = document.createElement("audio")
-      audio.src = url
-
-      audio.addEventListener("loadedmetadata", () => {
-        setAudioDuration(audio.duration)
-      })
-
-      audio.addEventListener("error", () => {
-        console.error("Error loading audio file")
-        setErrors({ file: "Error loading audio file. Please try a different file." })
-        URL.revokeObjectURL(url)
-      })
+      setAudioFile(file)
+      setAudioPreview(URL.createObjectURL(file))
+      setErrorMessage('')
     }
-  }
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target
-    setFormData({
-      ...formData,
-      [name]: value,
-    })
-    // Clear error when user starts typing
-    if (errors[name]) {
-      setErrors({ ...errors, [name]: "" })
-    }
-  }
-
-  const handleGenreChange = (value: string) => {
-    setFormData({
-      ...formData,
-      genre: value,
-    })
-    if (errors.genre) {
-      setErrors({ ...errors, genre: "" })
-    }
-  }
-
-  const validateForm = () => {
-    const tempErrors: Record<string, string> = {}
-    if (!formData.title.trim()) {
-      tempErrors.title = "Title is required"
-    }
-    if (!formData.artistName.trim()) {
-      tempErrors.artistName = "Artist Name is required"
-    }
-    if (!formData.genre) {
-      tempErrors.genre = "Genre is required"
-    }
-    if (!selectedMoodTag) {
-      tempErrors.moodTag = "Mood tag is required"
-    }
-    if (!selectedFile) {
-      tempErrors.file = "Audio file is required"
-    }
-    setErrors(tempErrors)
-    return Object.keys(tempErrors).length === 0
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-
-    if (!validateForm()) {
+    
+    if (!audioFile) {
+      setErrorMessage('Please select an audio file')
       return
     }
 
-    if (!bucketStatus.exists) {
-      setErrors({
-        submit: "Storage bucket is not configured. Please contact support or refresh the page.",
-      })
+    if (!formData.title || !formData.artist || !formData.contact_email) {
+      setErrorMessage('Please fill in all required fields')
       return
     }
 
-    setSubmitting(true)
+    setIsSubmitting(true)
     setUploadProgress(0)
+    setSubmitStatus('idle')
+    setErrorMessage('')
 
     try {
-      let fileUrl = ""
+      const submitFormData = new FormData()
+      submitFormData.append('audio_file', audioFile)
+      submitFormData.append('title', formData.title)
+      submitFormData.append('artist', formData.artist)
+      submitFormData.append('genre', formData.genre)
+      submitFormData.append('description', formData.description)
+      submitFormData.append('mood_tags', JSON.stringify(formData.mood_tags))
+      submitFormData.append('contact_email', formData.contact_email)
+      submitFormData.append('contact_phone', formData.contact_phone)
+      submitFormData.append('social_media', formData.social_media)
 
-      // Upload file to Supabase storage if selected
-      if (selectedFile) {
-        const supabase = createClient()
-
-        const fileExt = selectedFile.name.split(".").pop()?.toLowerCase()
-        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
-        const filePath = `submissions/${fileName}`
-
-        setUploadProgress(25)
-
-        console.log("Upload details:", {
-          bucket: "audio-submissions",
-          filePath,
-          fileSize: selectedFile.size,
-          fileType: selectedFile.type,
-          fileName: selectedFile.name,
-        })
-
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from("audio-submissions")
-          .upload(filePath, selectedFile, {
-            cacheControl: "3600",
-            upsert: false,
-            contentType: selectedFile.type,
-          })
-
-        if (uploadError) {
-          console.error("Upload error details:", uploadError)
-          throw new Error(`Upload failed: ${uploadError.message}`)
-        }
-
-        console.log("Upload successful:", uploadData)
-        setUploadProgress(50)
-
-        // Get public URL
-        const {
-          data: { publicUrl },
-        } = supabase.storage.from("audio-submissions").getPublicUrl(filePath)
-
-        fileUrl = publicUrl
-        console.log("Generated public URL:", fileUrl)
-        setUploadProgress(75)
-      }
-
-      // Submit to API
-      const response = await fetch("/api/submissions/create", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          track_title: formData.title.trim(),
-          artist_name: formData.artistName.trim(),
-          genre: formData.genre,
-          mood_tags: [selectedMoodTag],
-          file_url: fileUrl,
-          file_size: selectedFile?.size || 0,
-          duration: audioDuration || 0,
-        }),
+      const response = await fetch('/api/submissions/create', {
+        method: 'POST',
+        body: submitFormData,
       })
 
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Submission failed')
+      }
+
+      setSubmitStatus('success')
       setUploadProgress(100)
-
-      if (response.ok) {
-        const result = await response.json()
-        console.log("Submission successful:", result)
-
-        setSuccess(true)
-        setFormData({
-          title: "",
-          artistName: "",
-          genre: "",
-        })
-        setSelectedFile(null)
-        setSelectedMoodTag("")
-        setErrors({})
-        setAudioDuration(null)
-        setAudioUrl(null)
-
-        // Reset file input
-        const fileInput = document.getElementById("audio") as HTMLInputElement
-        if (fileInput) {
-          fileInput.value = ""
-        }
-
-        // Redirect to submissions page after 3 seconds
-        setTimeout(() => {
-          router.push("/submissions")
-        }, 3000)
-      } else {
-        const errorData = await response.json()
-        console.error("Submission failed:", errorData)
-        setErrors({ submit: errorData.error || "Submission failed" })
+      
+      // Reset form
+      setFormData({
+        title: '',
+        artist: '',
+        genre: '',
+        description: '',
+        mood_tags: [],
+        contact_email: '',
+        contact_phone: '',
+        social_media: ''
+      })
+      setAudioFile(null)
+      setAudioPreview(null)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
       }
+
     } catch (error) {
-      console.error("Submission error:", error)
-      setErrors({ submit: error instanceof Error ? error.message : "Submission failed" })
+      console.error('Submission error:', error)
+      setSubmitStatus('error')
+      setErrorMessage(error instanceof Error ? error.message : 'An unexpected error occurred')
     } finally {
-      setSubmitting(false)
-      setUploadProgress(0)
+      setIsSubmitting(false)
     }
-  }
-
-  // Cleanup audio URL on unmount
-  useEffect(() => {
-    return () => {
-      if (audioUrl) {
-        URL.revokeObjectURL(audioUrl)
-      }
-    }
-  }, [audioUrl])
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-4"></div>
-          <p className="text-white">Loading submission form...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-center text-white">
-          <AlertCircle className="h-16 w-16 text-red-400 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold mb-2">Access Denied</h2>
-          <p className="text-gray-400">You need to be logged in to submit music.</p>
-        </div>
-      </div>
-    )
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
-      <div className="max-w-4xl mx-auto p-6">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center space-x-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => router.back()}
-              className="border-gray-600 text-white hover:bg-gray-800 bg-transparent"
-            >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back
-            </Button>
-            <div>
-              <h1 className="text-3xl font-bold flex items-center">
-                <Music className="h-8 w-8 mr-3 text-purple-400" />
-                Submit Your Music
-              </h1>
-              <p className="text-gray-400">Share your latest track with Grammy-nominated producers</p>
-            </div>
-          </div>
-
-          {user && (
-            <div className="text-right">
-              <div className="flex items-center space-x-2 mb-1">
-                {user.tier === "creator" && <Clock className="h-4 w-4 text-orange-400" />}
-                {user.tier === "indie" && <Star className="h-4 w-4 text-blue-400" />}
-                {user.tier === "pro" && <Crown className="h-4 w-4 text-purple-400" />}
-                <span className="text-sm text-gray-400 capitalize">{user.tier} Plan</span>
-              </div>
-              <div className="flex items-center space-x-1">
-                <Zap className="h-4 w-4 text-orange-400" />
-                <span className="text-white font-medium">
-                  {user.submission_credits === 999999 ? "∞" : user.submission_credits} credits remaining
-                </span>
-              </div>
-            </div>
-          )}
+    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 py-12 px-4">
+      <div className="max-w-2xl mx-auto">
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-white mb-4">Submit Your Track</h1>
+          <p className="text-gray-300">
+            Share your music with our team for potential placement opportunities
+          </p>
         </div>
 
-        {/* Bucket Status Alert */}
-        {bucketStatus.checking && (
-          <Alert className="mb-6 bg-blue-500/20 border-blue-500/30">
-            <RefreshCw className="h-4 w-4 animate-spin" />
-            <AlertDescription className="text-blue-300">Checking storage configuration...</AlertDescription>
-          </Alert>
-        )}
-
-        {!bucketStatus.checking && !bucketStatus.exists && (
-          <Alert variant="destructive" className="mb-6 bg-red-500/20 border-red-500/30">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription className="text-red-300">
-              <div className="space-y-3">
-                <p className="font-medium">Storage bucket is not configured properly.</p>
-                <div className="text-sm space-y-1">
-                  <p>
-                    <strong>Error:</strong> {bucketStatus.error}
-                  </p>
-                  <p>Please refresh the page or contact support if the issue persists.</p>
-                  {bucketStatus.details && (
-                    <details className="mt-2">
-                      <summary className="cursor-pointer text-red-200 hover:text-red-100">
-                        Show technical details
-                      </summary>
-                      <pre className="mt-2 p-2 bg-red-900/20 rounded text-xs overflow-auto">
-                        {JSON.stringify(bucketStatus.details, null, 2)}
-                      </pre>
-                    </details>
-                  )}
-                </div>
-                <div className="flex space-x-2">
-                  <Button
-                    type="button"
-                    onClick={checkBucketStatus}
-                    size="sm"
-                    variant="outline"
-                    className="border-red-400 text-red-300 hover:bg-red-500/20 bg-transparent"
-                  >
-                    <RefreshCw className="h-3 w-3 mr-1" />
-                    Retry Check
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={() => window.open("/api/debug/simple-bucket-check", "_blank")}
-                    size="sm"
-                    variant="outline"
-                    className="border-red-400 text-red-300 hover:bg-red-500/20 bg-transparent"
-                  >
-                    <Settings className="h-3 w-3 mr-1" />
-                    Debug Info
-                  </Button>
-                </div>
-              </div>
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* Success Alert */}
-        {success && (
-          <Alert className="mb-6 bg-green-500/20 border-green-500/30 text-green-300">
-            <CheckCircle className="h-4 w-4" />
-            <AlertDescription className="text-green-300">
-              🎉 Track submitted successfully! Our team will review it and provide feedback within 48-72 hours.
-              Redirecting to your submissions...
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* Error Alert */}
-        {errors.submit && (
-          <Alert variant="destructive" className="mb-6 bg-red-500/20 border-red-500/30">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription className="text-red-300">{errors.submit}</AlertDescription>
-          </Alert>
-        )}
-
-        {/* Main Form Card */}
-        <Card className="bg-gray-800 border-gray-700">
-          <CardHeader className="text-center pb-6">
-            <div className="flex items-center justify-center mb-4">
-              <div className="p-3 bg-gradient-to-r from-purple-500/20 to-blue-500/20 rounded-full">
-                <Sparkles className="h-8 w-8 text-purple-400" />
-              </div>
-            </div>
-            <CardTitle className="text-2xl text-white">Ready to Get Professional Feedback?</CardTitle>
-            <CardDescription className="text-gray-400 text-lg">
-              Submit your track and get expert review from industry professionals
-            </CardDescription>
+        <Card className="bg-white/10 backdrop-blur-md border-white/20">
+          <CardHeader>
+            <CardTitle className="text-white flex items-center gap-2">
+              <Music className="w-5 h-5" />
+              Track Submission
+            </CardTitle>
           </CardHeader>
-
-          <CardContent className="space-y-6">
+          <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Track Information */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-white flex items-center">
-                  <Music className="h-5 w-5 mr-2 text-purple-400" />
-                  Track Information
-                </h3>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="title" className="text-white">
-                      Track Title *
-                    </Label>
-                    <Input
-                      type="text"
-                      id="title"
-                      name="title"
-                      value={formData.title}
-                      onChange={handleInputChange}
-                      className="bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-purple-500"
-                      placeholder="Enter your track title"
-                    />
-                    {errors.title && <p className="text-red-400 text-sm mt-1">{errors.title}</p>}
-                  </div>
-
-                  <div>
-                    <Label htmlFor="artistName" className="text-white">
-                      Artist Name *
-                    </Label>
-                    <Input
-                      type="text"
-                      id="artistName"
-                      name="artistName"
-                      value={formData.artistName}
-                      onChange={handleInputChange}
-                      className="bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-purple-500"
-                      placeholder="Enter artist name"
-                    />
-                    {errors.artistName && <p className="text-red-400 text-sm mt-1">{errors.artistName}</p>}
-                  </div>
-                </div>
-
-                <div>
-                  <Label htmlFor="genre" className="text-white">
-                    Genre *
-                  </Label>
-                  <Select onValueChange={handleGenreChange} value={formData.genre}>
-                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white focus:border-purple-500">
-                      <SelectValue placeholder="Select your track's genre" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-gray-700 border-gray-600">
-                      {genres.map((genre) => (
-                        <SelectItem key={genre} value={genre} className="text-white hover:bg-gray-600">
-                          {genre}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {errors.genre && <p className="text-red-400 text-sm mt-1">{errors.genre}</p>}
-                </div>
-              </div>
-
-              {/* Mood Tag - Clickable Bubbles */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-white flex items-center">
-                  <Tag className="h-5 w-5 mr-2 text-purple-400" />
-                  Mood Tag *
-                </h3>
-                <p className="text-gray-400 text-sm">Select the mood that best describes your track</p>
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                  {moodTags.map((tag) => (
-                    <button
-                      key={tag}
-                      type="button"
-                      onClick={() => {
-                        setSelectedMoodTag(tag)
-                        if (errors.moodTag) {
-                          setErrors({ ...errors, moodTag: "" })
-                        }
-                      }}
-                      className={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 border ${
-                        selectedMoodTag === tag
-                          ? "bg-gradient-to-r from-purple-500 to-blue-500 text-white border-transparent shadow-lg transform scale-105"
-                          : "bg-gray-700 text-gray-300 border-gray-600 hover:bg-gray-600 hover:text-white hover:border-gray-500"
-                      }`}
-                    >
-                      {tag}
-                    </button>
-                  ))}
-                </div>
-
-                {errors.moodTag && <p className="text-red-400 text-sm mt-1">{errors.moodTag}</p>}
-              </div>
-
-              {/* File Upload */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-white flex items-center">
-                  <FileAudio className="h-5 w-5 mr-2 text-purple-400" />
+              {/* Audio File Upload */}
+              <div className="space-y-2">
+                <Label htmlFor="audio_file" className="text-white">
                   Audio File *
-                </h3>
-
-                <div className="border-2 border-dashed border-gray-600 rounded-lg p-6 text-center hover:border-purple-500 transition-colors">
-                  <Input
+                </Label>
+                <div className="border-2 border-dashed border-white/30 rounded-lg p-6 text-center">
+                  <input
+                    ref={fileInputRef}
                     type="file"
-                    id="audio"
-                    name="audio"
+                    id="audio_file"
                     accept="audio/*"
                     onChange={handleFileChange}
                     className="hidden"
                   />
-                  <Label htmlFor="audio" className="cursor-pointer">
-                    <div className="space-y-2">
-                      <Upload className="h-12 w-12 text-gray-400 mx-auto" />
-                      <div className="text-white font-medium">
-                        {selectedFile ? selectedFile.name : "Click to upload your audio file"}
-                      </div>
-                      <div className="text-gray-400 text-sm">
-                        Supported formats: MP3, WAV, FLAC, AAC, M4A, OGG (Max 50MB)
-                      </div>
-                      {selectedFile && audioDuration && (
-                        <div className="text-purple-400 text-sm">
-                          Duration: {Math.floor(audioDuration / 60)}:
-                          {String(Math.floor(audioDuration % 60)).padStart(2, "0")}
-                        </div>
-                      )}
-                    </div>
-                  </Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="bg-white/10 border-white/30 text-white hover:bg-white/20"
+                  >
+                    <Upload className="w-4 h-4 mr-2" />
+                    Choose Audio File
+                  </Button>
+                  <p className="text-sm text-gray-300 mt-2">
+                    MP3, WAV, M4A, AAC (Max 50MB)
+                  </p>
+                  {audioFile && (
+                    <p className="text-sm text-green-300 mt-2">
+                      Selected: {audioFile.name}
+                    </p>
+                  )}
                 </div>
+              </div>
 
-                {/* Enhanced Audio Player */}
-                {selectedFile && audioUrl && (
-                  <div className="mt-4">
-                    <EnhancedAudioPlayer
-                      src={audioUrl}
-                      title={formData.title || selectedFile.name}
-                      artist={formData.artistName || "Unknown Artist"}
-                      albumArt="/images/default-holographic-album-cover.png"
+              {/* Audio Preview */}
+              {audioPreview && (
+                <div className="space-y-2">
+                  <Label className="text-white">Preview</Label>
+                  <EnhancedAudioPlayer
+                    src={audioPreview}
+                    title={formData.title || 'Untitled'}
+                    artist={formData.artist || 'Unknown Artist'}
+                  />
+                </div>
+              )}
+
+              {/* Track Information */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="title" className="text-white">
+                    Track Title *
+                  </Label>
+                  <Input
+                    id="title"
+                    name="title"
+                    value={formData.title}
+                    onChange={handleInputChange}
+                    className="bg-white/10 border-white/30 text-white placeholder:text-gray-400"
+                    placeholder="Enter track title"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="artist" className="text-white">
+                    Artist Name *
+                  </Label>
+                  <Input
+                    id="artist"
+                    name="artist"
+                    value={formData.artist}
+                    onChange={handleInputChange}
+                    className="bg-white/10 border-white/30 text-white placeholder:text-gray-400"
+                    placeholder="Enter artist name"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="genre" className="text-white">
+                  Genre
+                </Label>
+                <select
+                  id="genre"
+                  name="genre"
+                  value={formData.genre}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 bg-white/10 border border-white/30 rounded-md text-white"
+                >
+                  <option value="">Select a genre</option>
+                  {GENRE_OPTIONS.map(genre => (
+                    <option key={genre} value={genre} className="text-black">
+                      {genre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="description" className="text-white">
+                  Description
+                </Label>
+                <Textarea
+                  id="description"
+                  name="description"
+                  value={formData.description}
+                  onChange={handleInputChange}
+                  className="bg-white/10 border-white/30 text-white placeholder:text-gray-400"
+                  placeholder="Tell us about your track..."
+                  rows={3}
+                />
+              </div>
+
+              {/* Mood Tags */}
+              <div className="space-y-2">
+                <Label className="text-white">Mood Tags</Label>
+                <div className="flex flex-wrap gap-2">
+                  {MOOD_TAGS.map(mood => (
+                    <Badge
+                      key={mood}
+                      variant={formData.mood_tags.includes(mood) ? "default" : "outline"}
+                      className={`cursor-pointer transition-colors ${
+                        formData.mood_tags.includes(mood)
+                          ? 'bg-purple-600 text-white'
+                          : 'bg-white/10 text-white border-white/30 hover:bg-white/20'
+                      }`}
+                      onClick={() => handleMoodToggle(mood)}
+                    >
+                      {mood}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              {/* Contact Information */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-white">Contact Information</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="contact_email" className="text-white">
+                      Email *
+                    </Label>
+                    <Input
+                      id="contact_email"
+                      name="contact_email"
+                      type="email"
+                      value={formData.contact_email}
+                      onChange={handleInputChange}
+                      className="bg-white/10 border-white/30 text-white placeholder:text-gray-400"
+                      placeholder="your@email.com"
+                      required
                     />
                   </div>
-                )}
-
-                {errors.file && <p className="text-red-400 text-sm">{errors.file}</p>}
+                  <div className="space-y-2">
+                    <Label htmlFor="contact_phone" className="text-white">
+                      Phone
+                    </Label>
+                    <Input
+                      id="contact_phone"
+                      name="contact_phone"
+                      type="tel"
+                      value={formData.contact_phone}
+                      onChange={handleInputChange}
+                      className="bg-white/10 border-white/30 text-white placeholder:text-gray-400"
+                      placeholder="(555) 123-4567"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="social_media" className="text-white">
+                    Social Media
+                  </Label>
+                  <Input
+                    id="social_media"
+                    name="social_media"
+                    value={formData.social_media}
+                    onChange={handleInputChange}
+                    className="bg-white/10 border-white/30 text-white placeholder:text-gray-400"
+                    placeholder="@username or profile URL"
+                  />
+                </div>
               </div>
 
               {/* Upload Progress */}
-              {uploadProgress > 0 && (
+              {isSubmitting && (
                 <div className="space-y-2">
-                  <Label className="text-white">Upload Progress</Label>
-                  <Progress value={uploadProgress} className="bg-gray-700" />
-                  <p className="text-sm text-gray-400 text-center">{uploadProgress}% uploaded</p>
+                  <div className="flex justify-between text-sm text-white">
+                    <span>Uploading...</span>
+                    <span>{uploadProgress}%</span>
+                  </div>
+                  <Progress value={uploadProgress} className="w-full" />
+                </div>
+              )}
+
+              {/* Status Messages */}
+              {submitStatus === 'success' && (
+                <div className="flex items-center gap-2 p-4 bg-green-500/20 border border-green-500/30 rounded-lg">
+                  <CheckCircle className="w-5 h-5 text-green-400" />
+                  <span className="text-green-300">
+                    Track submitted successfully! We'll review it and get back to you.
+                  </span>
+                </div>
+              )}
+
+              {(submitStatus === 'error' || errorMessage) && (
+                <div className="flex items-center gap-2 p-4 bg-red-500/20 border border-red-500/30 rounded-lg">
+                  <AlertCircle className="w-5 h-5 text-red-400" />
+                  <span className="text-red-300">{errorMessage}</span>
                 </div>
               )}
 
               {/* Submit Button */}
-              <div className="pt-6">
-                <Button
-                  type="submit"
-                  disabled={submitting || !bucketStatus.exists}
-                  className="w-full bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white font-semibold py-3 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {submitting ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                      Submitting Your Track...
-                    </>
-                  ) : !bucketStatus.exists ? (
-                    <>
-                      <AlertCircle className="mr-2 h-5 w-5" />
-                      Storage Not Configured
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="mr-2 h-5 w-5" />
-                      Submit for Professional Review
-                    </>
-                  )}
-                </Button>
-
-                <p className="text-center text-gray-400 text-sm mt-3">
-                  {bucketStatus.exists
-                    ? "You'll receive expert feedback within 48-72 hours"
-                    : "Please refresh the page to retry bucket configuration"}
-                </p>
-              </div>
+              <Button
+                type="submit"
+                disabled={isSubmitting || !audioFile}
+                className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold py-3"
+              >
+                {isSubmitting ? 'Submitting...' : 'Submit Track'}
+              </Button>
             </form>
           </CardContent>
         </Card>
-
-        {/* Info Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
-          <Card className="bg-gray-800 border-gray-700">
-            <CardContent className="p-6 text-center">
-              <CheckCircle className="h-8 w-8 text-green-400 mx-auto mb-3" />
-              <h3 className="font-semibold text-white mb-2">Professional Review</h3>
-              <p className="text-gray-400 text-sm">Get detailed feedback from Grammy-nominated producers</p>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gray-800 border-gray-700">
-            <CardContent className="p-6 text-center">
-              <Clock className="h-8 w-8 text-blue-400 mx-auto mb-3" />
-              <h3 className="font-semibold text-white mb-2">Quick Turnaround</h3>
-              <p className="text-gray-400 text-sm">Receive feedback within 48-72 hours</p>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gray-800 border-gray-700">
-            <CardContent className="p-6 text-center">
-              <Star className="h-8 w-8 text-purple-400 mx-auto mb-3" />
-              <h3 className="font-semibold text-white mb-2">Industry Insights</h3>
-              <p className="text-gray-400 text-sm">Learn from professionals who've worked with top artists</p>
-            </CardContent>
-          </Card>
-        </div>
       </div>
     </div>
   )
