@@ -1,40 +1,53 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createServiceClient } from "@/lib/supabase/server"
+
+export const dynamic = "force-dynamic"
 
 export async function GET() {
   try {
-    const supabase = createClient()
+    console.log("Starting bucket check...")
+
+    const supabase = createServiceClient()
 
     // Check if bucket exists
-    const { data: buckets, error: listError } = await supabase.storage.listBuckets()
+    const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets()
 
-    if (listError) {
-      console.error("Error listing buckets:", listError)
+    if (bucketsError) {
+      console.error("Error listing buckets:", bucketsError)
       return NextResponse.json({
         success: false,
         error: "Failed to list buckets",
-        details: listError,
-        bucketExists: false,
+        details: bucketsError,
       })
     }
 
-    const bucketExists = buckets?.some((bucket) => bucket.name === "audio-submissions")
+    console.log(
+      "Available buckets:",
+      buckets?.map((b) => b.name),
+    )
 
-    if (!bucketExists) {
+    const audioBucket = buckets?.find((bucket) => bucket.name === "audio-submissions")
+
+    if (!audioBucket) {
+      console.log("Audio submissions bucket not found")
       return NextResponse.json({
         success: false,
-        error: "Bucket does not exist",
-        details: { message: "audio-submissions bucket not found" },
-        bucketExists: false,
+        error: "Audio submissions bucket does not exist",
+        availableBuckets: buckets?.map((b) => b.name) || [],
       })
     }
 
-    // Create a minimal MP3 file for testing
+    console.log("Found audio-submissions bucket:", audioBucket)
+
+    // Test upload capability with proper audio file
+    const testFileName = `test-${Date.now()}.mp3`
+
+    // Create a minimal MP3 file buffer (just headers, not actual audio)
     const mp3Header = new Uint8Array([
       0xff,
       0xfb,
       0x90,
-      0x00, // MP3 header
+      0x00, // MP3 frame header
       0x00,
       0x00,
       0x00,
@@ -53,9 +66,8 @@ export async function GET() {
       0x00,
     ])
 
-    const testFileName = `test-${Date.now()}.mp3`
+    console.log("Testing upload with file:", testFileName)
 
-    // Test upload
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from("audio-submissions")
       .upload(testFileName, mp3Header, {
@@ -64,7 +76,7 @@ export async function GET() {
       })
 
     if (uploadError) {
-      console.error("Upload error:", uploadError)
+      console.error("Upload test failed:", uploadError)
       return NextResponse.json({
         success: false,
         error: "Upload test failed",
@@ -73,22 +85,41 @@ export async function GET() {
       })
     }
 
+    console.log("Upload test successful:", uploadData)
+
+    // Test public URL generation
+    const {
+      data: { publicUrl },
+    } = supabase.storage.from("audio-submissions").getPublicUrl(testFileName)
+
+    console.log("Generated public URL:", publicUrl)
+
     // Clean up test file
-    await supabase.storage.from("audio-submissions").remove([testFileName])
+    const { error: deleteError } = await supabase.storage.from("audio-submissions").remove([testFileName])
+
+    if (deleteError) {
+      console.warn("Failed to clean up test file:", deleteError)
+    } else {
+      console.log("Test file cleaned up successfully")
+    }
 
     return NextResponse.json({
       success: true,
-      message: "Bucket check passed",
       bucketExists: true,
-      uploadTest: "passed",
+      bucketInfo: audioBucket,
+      uploadTest: {
+        success: true,
+        fileName: testFileName,
+        publicUrl,
+      },
+      message: "Audio submissions bucket is fully functional",
     })
   } catch (error) {
-    console.error("Bucket check error:", error)
+    console.error("Bucket check failed:", error)
     return NextResponse.json({
       success: false,
       error: "Bucket check failed",
       details: error instanceof Error ? error.message : "Unknown error",
-      bucketExists: false,
     })
   }
 }

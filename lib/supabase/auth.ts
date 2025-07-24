@@ -1,152 +1,226 @@
-import { createClient } from "./server"
-import { redirect } from "next/navigation"
-import type { User } from "@supabase/supabase-js"
+import { createServiceClient } from "./server"
+import { cookies } from "next/headers"
 
-export async function getCurrentUser(): Promise<User | null> {
-  const supabase = createClient()
+export interface AuthUser {
+  id: string
+  email: string
+  name: string
+  role: "user" | "admin" | "master_dev"
+  tier: "creator" | "indie" | "pro"
+  submission_credits: number
+  is_verified: boolean
+  legal_waiver_accepted: boolean
+  compensation_type: string | null
+  created_at: string
+  updated_at: string
+}
 
+export async function getCurrentUser(): Promise<AuthUser | null> {
   try {
-    const {
-      data: { user },
-      error,
-    } = await supabase.auth.getUser()
+    const cookieStore = cookies()
+    const sessionToken = cookieStore.get("session_token")?.value
 
-    if (error) {
-      console.error("Error getting current user:", error)
+    if (!sessionToken) {
       return null
     }
 
-    return user
+    const supabase = createServiceClient()
+
+    const { data: sessionData, error: sessionError } = await supabase
+      .from("user_sessions")
+      .select(`
+        user_id,
+        expires_at,
+        users (
+          id,
+          email,
+          name,
+          role,
+          tier,
+          submission_credits,
+          is_verified,
+          legal_waiver_accepted,
+          compensation_type,
+          created_at,
+          updated_at
+        )
+      `)
+      .eq("session_token", sessionToken)
+      .single()
+
+    if (sessionError || !sessionData || !sessionData.users) {
+      return null
+    }
+
+    // Check if session is expired
+    const expiresAt = new Date(sessionData.expires_at)
+    const now = new Date()
+
+    if (expiresAt < now) {
+      // Clean up expired session
+      await supabase.from("user_sessions").delete().eq("session_token", sessionToken)
+      return null
+    }
+
+    const user = Array.isArray(sessionData.users) ? sessionData.users[0] : sessionData.users
+    return user as AuthUser
   } catch (error) {
-    console.error("Error in getCurrentUser:", error)
+    console.error("Error getting current user:", error)
     return null
   }
 }
 
-export async function requireAuth(): Promise<User> {
+export async function requireAuth(): Promise<AuthUser> {
   const user = await getCurrentUser()
-
   if (!user) {
-    redirect("/login")
+    throw new Error("Authentication required")
   }
-
   return user
 }
 
-export async function requireAdmin(): Promise<User> {
+export async function requireAdmin(): Promise<AuthUser> {
   const user = await requireAuth()
-  const supabase = createClient()
-
-  try {
-    const { data: profile, error } = await supabase.from("users").select("role, is_admin").eq("id", user.id).single()
-
-    if (error || (!profile?.is_admin && profile?.role !== "admin")) {
-      redirect("/dashboard")
-    }
-
-    return user
-  } catch (error) {
-    console.error("Error checking admin status:", error)
-    redirect("/dashboard")
+  if (user.role !== "admin" && user.role !== "master_dev") {
+    throw new Error("Admin access required")
   }
+  return user
 }
 
-export async function requireMasterDev(): Promise<User> {
+export async function requireMasterDev(): Promise<AuthUser> {
   const user = await requireAuth()
-  const supabase = createClient()
+  if (user.role !== "master_dev") {
+    throw new Error("Master dev access required")
+  }
+  return user
+}
 
+export async function validateSession(sessionToken: string): Promise<AuthUser | null> {
   try {
-    const { data: profile, error } = await supabase
-      .from("users")
-      .select("role, is_master_dev")
-      .eq("id", user.id)
+    const supabase = createServiceClient()
+
+    const { data: sessionData, error: sessionError } = await supabase
+      .from("user_sessions")
+      .select(`
+        user_id,
+        expires_at,
+        users (
+          id,
+          email,
+          name,
+          role,
+          tier,
+          submission_credits,
+          is_verified,
+          legal_waiver_accepted,
+          compensation_type,
+          created_at,
+          updated_at
+        )
+      `)
+      .eq("session_token", sessionToken)
       .single()
 
-    if (error || (!profile?.is_master_dev && profile?.role !== "master_dev")) {
-      redirect("/dashboard")
-    }
-
-    return user
-  } catch (error) {
-    console.error("Error checking master dev status:", error)
-    redirect("/dashboard")
-  }
-}
-
-export async function getUserRole(userId: string): Promise<string | null> {
-  const supabase = createClient()
-
-  try {
-    const { data: profile, error } = await supabase.from("users").select("role").eq("id", userId).single()
-
-    if (error) {
-      console.error("Error getting user role:", error)
+    if (sessionError || !sessionData || !sessionData.users) {
       return null
     }
 
-    return profile?.role || "user"
-  } catch (error) {
-    console.error("Error in getUserRole:", error)
-    return null
-  }
-}
+    // Check if session is expired
+    const expiresAt = new Date(sessionData.expires_at)
+    const now = new Date()
 
-export async function isAdmin(userId: string): Promise<boolean> {
-  const supabase = createClient()
-
-  try {
-    const { data: profile, error } = await supabase.from("users").select("is_admin, role").eq("id", userId).single()
-
-    if (error) {
-      console.error("Error checking admin status:", error)
-      return false
-    }
-
-    return profile?.is_admin || profile?.role === "admin"
-  } catch (error) {
-    console.error("Error in isAdmin:", error)
-    return false
-  }
-}
-
-export async function isMasterDev(userId: string): Promise<boolean> {
-  const supabase = createClient()
-
-  try {
-    const { data: profile, error } = await supabase
-      .from("users")
-      .select("is_master_dev, role")
-      .eq("id", userId)
-      .single()
-
-    if (error) {
-      console.error("Error checking master dev status:", error)
-      return false
-    }
-
-    return profile?.is_master_dev || profile?.role === "master_dev"
-  } catch (error) {
-    console.error("Error in isMasterDev:", error)
-    return false
-  }
-}
-
-export async function validateSession(): Promise<User | null> {
-  const supabase = createClient()
-
-  try {
-    const {
-      data: { session },
-      error,
-    } = await supabase.auth.getSession()
-
-    if (error || !session) {
+    if (expiresAt < now) {
+      // Clean up expired session
+      await supabase.from("user_sessions").delete().eq("session_token", sessionToken)
       return null
     }
 
-    return session.user
+    const user = Array.isArray(sessionData.users) ? sessionData.users[0] : sessionData.users
+    return user as AuthUser
   } catch (error) {
     console.error("Error validating session:", error)
     return null
   }
+}
+
+export async function createSession(userId: string): Promise<string> {
+  try {
+    const supabase = createServiceClient()
+    const sessionToken = crypto.randomUUID()
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
+
+    const { error } = await supabase.from("user_sessions").insert({
+      user_id: userId,
+      session_token: sessionToken,
+      expires_at: expiresAt.toISOString(),
+    })
+
+    if (error) {
+      throw error
+    }
+
+    return sessionToken
+  } catch (error) {
+    console.error("Error creating session:", error)
+    throw error
+  }
+}
+
+export async function deleteSession(sessionToken: string): Promise<void> {
+  try {
+    const supabase = createServiceClient()
+    await supabase.from("user_sessions").delete().eq("session_token", sessionToken)
+  } catch (error) {
+    console.error("Error deleting session:", error)
+    throw error
+  }
+}
+
+export async function cleanupExpiredSessions(): Promise<void> {
+  try {
+    const supabase = createServiceClient()
+    const now = new Date().toISOString()
+
+    await supabase.from("user_sessions").delete().lt("expires_at", now)
+  } catch (error) {
+    console.error("Error cleaning up expired sessions:", error)
+  }
+}
+
+export async function isAuthenticated(): Promise<boolean> {
+  const user = await getCurrentUser()
+  return user !== null
+}
+
+export async function isAdmin(): Promise<boolean> {
+  const user = await getCurrentUser()
+  return user?.role === "admin" || user?.role === "master_dev"
+}
+
+export async function isMasterDev(): Promise<boolean> {
+  const user = await getCurrentUser()
+  return user?.role === "master_dev"
+}
+
+export async function getUserRole(): Promise<string | null> {
+  const user = await getCurrentUser()
+  return user?.role || null
+}
+
+export async function getUserTier(): Promise<string | null> {
+  const user = await getCurrentUser()
+  return user?.tier || null
+}
+
+export async function getSubmissionCredits(): Promise<number> {
+  const user = await getCurrentUser()
+  return user?.submission_credits || 0
+}
+
+export async function canSubmit(): Promise<boolean> {
+  const user = await getCurrentUser()
+
+  if (!user) return false
+  if (user.role === "master_dev") return true
+
+  return user.submission_credits > 0
 }
